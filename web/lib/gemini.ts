@@ -25,9 +25,9 @@ export async function generateVideoBlueprint(
     );
   }
 
-  const primaryModel = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+  const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
   const candidateModels = Array.from(
-    new Set([primaryModel, 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'])
+    new Set([primaryModel, 'gemini-3.6-flash', 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'])
   );
 
   const genAI = new GoogleGenerativeAI(apiKey);
@@ -139,9 +139,9 @@ export async function generateConversationalReply(
     return "Hi there! I'm your UGC Video Assistant. Drop a product URL anytime (e.g. `calai.app`), and I'll generate a 5–10s marketing video for you!";
   }
 
-  const primaryModel = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+  const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
   const candidateModels = Array.from(
-    new Set([primaryModel, 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'])
+    new Set([primaryModel, 'gemini-3.6-flash', 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'])
   );
 
   const genAI = new GoogleGenerativeAI(apiKey);
@@ -156,7 +156,7 @@ export async function generateConversationalReply(
         systemInstruction,
         generationConfig: {
           temperature: 0.8,
-          maxOutputTokens: 350,
+          maxOutputTokens: 2048,
         },
       });
 
