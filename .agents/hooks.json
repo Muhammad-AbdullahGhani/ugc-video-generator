@@ -1,0 +1,16 @@
+{
+  "agent-capture": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "python capture_hook.py Stop"
+      }
+    ],
+    "PostInvocation": [
+      {
+        "type": "command",
+        "command": "python capture_hook.py PostInvocation"
+      }
+    ]
+  }
+}
