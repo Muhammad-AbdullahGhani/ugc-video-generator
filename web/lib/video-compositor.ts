@@ -130,12 +130,12 @@ export async function renderUgcVideo(options: RenderOptions): Promise<RenderResu
   const escapedFontPath = fontPath.replace(/\\/g, '/').replace(/:/g, '\\:');
   const escapedTextPath = textFile.replace(/\\/g, '/').replace(/:/g, '\\:');
 
-  // Build filter complex
+  // Build filter complex for crisp, fast-rendering 720x1280 vertical video
   const filterComplex = [
-    `[0:v]trim=duration=${durationSeconds},scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setpts=PTS-STARTPTS[bg]`,
-    `[1:v]scale=680:-1[gif]`,
-    `[bg][gif]overlay=(W-w)/2:(H-h)/2+80:shortest=1[comp1]`,
-    `[comp1]drawtext=textfile='${escapedTextPath}':fontfile='${escapedFontPath}':fontsize=56:fontcolor=white:borderw=4:bordercolor=black:box=1:boxcolor=black@0.65:boxborderw=20:line_spacing=16:x=(w-text_w)/2:y=(h-text_h)/3-100[v]`,
+    `[0:v]trim=duration=${durationSeconds},scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setpts=PTS-STARTPTS[bg]`,
+    `[1:v]scale=460:-1[gif]`,
+    `[bg][gif]overlay=(W-w)/2:(H-h)/2+50:shortest=1[comp1]`,
+    `[comp1]drawtext=textfile='${escapedTextPath}':fontfile='${escapedFontPath}':fontsize=38:fontcolor=white:borderw=3:bordercolor=black:box=1:boxcolor=black@0.65:boxborderw=14:line_spacing=12:x=(w-text_w)/2:y=(h-text_h)/3-70[v]`,
     `[2:a]afade=t=out:st=${durationSeconds - 1}:d=1[a]`,
   ].join(';');
 
@@ -166,13 +166,13 @@ export async function renderUgcVideo(options: RenderOptions): Promise<RenderResu
     '-preset',
     'fast',
     '-crf',
-    '23',
+    '27',
     '-pix_fmt',
     'yuv420p',
     '-c:a',
     'aac',
     '-b:a',
-    '192k',
+    '128k',
     '-t',
     String(durationSeconds),
     outputPath,
@@ -208,8 +208,21 @@ export async function renderUgcVideo(options: RenderOptions): Promise<RenderResu
       if (code === 0 && fs.existsSync(outputPath)) {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(`[FFmpeg] Video rendered successfully in ${elapsed}s: ${outputFilename}`);
+        
+        let publicUrl = `/api/video/${outputFilename}`;
+        try {
+          const videoBuffer = fs.readFileSync(outputPath);
+          // If video file size is within safe serverless JSON payload limit (< 3.2MB), inline as base64 data URL
+          // This avoids the Vercel issue where separate serverless containers don't share ephemeral /tmp
+          if (videoBuffer.length < 3.2 * 1024 * 1024) {
+            publicUrl = `data:video/mp4;base64,${videoBuffer.toString('base64')}`;
+          }
+        } catch (readErr) {
+          console.warn('[FFmpeg] Could not read video buffer for inlining:', readErr);
+        }
+
         resolve({
-          publicUrl: `/api/video/${outputFilename}`,
+          publicUrl,
           filename: outputFilename,
           duration: durationSeconds,
         });

@@ -22,6 +22,25 @@ const STARTER_PROMPTS = [
   'How does this work?',
 ];
 
+function dataUrlToBlobUrl(url?: string): string | undefined {
+  if (!url) return undefined;
+  if (!url.startsWith('data:video/mp4;base64,')) return url;
+  try {
+    const base64 = url.slice('data:video/mp4;base64,'.length);
+    const binary = atob(base64);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: 'video/mp4' });
+    return URL.createObjectURL(blob);
+  } catch (err) {
+    console.warn('[Video] Could not convert data URL to blob:', err);
+    return url;
+  }
+}
+
 export default function ChatInterface() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -72,6 +91,7 @@ export default function ChatInterface() {
       });
 
       const data: ChatApiResponse = await res.json();
+      const playableVideoUrl = dataUrlToBlobUrl(data.videoUrl);
 
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
@@ -79,7 +99,7 @@ export default function ChatInterface() {
         text: data.reply || 'No response received.',
         detectedUrl: data.detectedUrl,
         stage: data.stage,
-        videoUrl: data.videoUrl,
+        videoUrl: playableVideoUrl,
         error: data.error,
         createdAt: new Date().toISOString(),
       };
@@ -295,7 +315,7 @@ export default function ChatInterface() {
                   </div>
 
                   <div className="flex justify-between items-center pt-1">
-                    <span className="text-[11px] text-zinc-500 font-mono">1080x1920 • 30fps</span>
+                    <span className="text-[11px] text-zinc-500 font-mono">720x1280 (9:16) • 30fps</span>
                     <a
                       href={msg.videoUrl}
                       download="ugc-marketing-video.mp4"
