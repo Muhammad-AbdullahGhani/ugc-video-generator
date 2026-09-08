@@ -22,23 +22,19 @@ const STARTER_PROMPTS = [
   'How does this work?',
 ];
 
-function dataUrlToBlobUrl(url?: string): string | undefined {
+async function resolvePlayableVideoUrl(url?: string): Promise<string | undefined> {
   if (!url) return undefined;
-  if (!url.startsWith('data:video/mp4;base64,')) return url;
-  try {
-    const base64 = url.slice('data:video/mp4;base64,'.length);
-    const binary = atob(base64);
-    const len = binary.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-      bytes[i] = binary.charCodeAt(i);
+  if (url.startsWith('data:video/mp4;base64,')) {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      return URL.createObjectURL(blob);
+    } catch (err) {
+      console.warn('[Video] Native fetch data-to-blob failed:', err);
+      return url;
     }
-    const blob = new Blob([bytes], { type: 'video/mp4' });
-    return URL.createObjectURL(blob);
-  } catch (err) {
-    console.warn('[Video] Could not convert data URL to blob:', err);
-    return url;
   }
+  return url;
 }
 
 export default function ChatInterface() {
@@ -52,6 +48,7 @@ export default function ChatInterface() {
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -62,6 +59,39 @@ export default function ChatInterface() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, loading]);
+
+  const handleDownload = async (url: string, filename = 'ugc-marketing-video.mp4') => {
+    try {
+      setDownloading(true);
+      // If it's already a blob URL or data URL, download immediately
+      if (url.startsWith('blob:') || url.startsWith('data:')) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        return;
+      }
+
+      // For remote URLs, fetch blob to ensure proper attachment download across all browsers
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    } catch (err) {
+      console.warn('Direct blob download failed, opening in new tab:', err);
+      window.open(url, '_blank');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const sendMessage = async (textToSend?: string) => {
     const text = (textToSend || input).trim();
@@ -91,7 +121,7 @@ export default function ChatInterface() {
       });
 
       const data: ChatApiResponse = await res.json();
-      const playableVideoUrl = dataUrlToBlobUrl(data.videoUrl);
+      const playableVideoUrl = await resolvePlayableVideoUrl(data.videoUrl);
 
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
@@ -316,13 +346,14 @@ export default function ChatInterface() {
 
                   <div className="flex justify-between items-center pt-1">
                     <span className="text-[11px] text-zinc-500 font-mono">720x1280 (9:16) • 30fps</span>
-                    <a
-                      href={msg.videoUrl}
-                      download="ugc-marketing-video.mp4"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs shadow transition"
+                    <button
+                      onClick={() => handleDownload(msg.videoUrl!)}
+                      disabled={downloading}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs shadow transition disabled:opacity-50 cursor-pointer"
                     >
-                      <Download className="w-3.5 h-3.5" /> Download MP4
-                    </a>
+                      <Download className="w-3.5 h-3.5" />
+                      {downloading ? 'Downloading...' : 'Download MP4'}
+                    </button>
                   </div>
                 </div>
               )}

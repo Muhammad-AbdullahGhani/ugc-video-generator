@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { getAssetsDir } from './assets';
+import { storeVideo } from './storage';
 
 export interface RenderOptions {
   backgroundVideoName: string;
@@ -197,7 +198,7 @@ export async function renderUgcVideo(options: RenderOptions): Promise<RenderResu
       reject(new Error(`Failed to spawn FFmpeg (${ffmpegCmd}): ${err.message}`));
     });
 
-    proc.on('close', (code) => {
+    proc.on('close', async (code) => {
       // Clean up text file
       if (fs.existsSync(textFile)) {
         try {
@@ -211,14 +212,9 @@ export async function renderUgcVideo(options: RenderOptions): Promise<RenderResu
         
         let publicUrl = `/api/video/${outputFilename}`;
         try {
-          const videoBuffer = fs.readFileSync(outputPath);
-          // If video file size is within safe serverless JSON payload limit (< 3.2MB), inline as base64 data URL
-          // This avoids the Vercel issue where separate serverless containers don't share ephemeral /tmp
-          if (videoBuffer.length < 3.2 * 1024 * 1024) {
-            publicUrl = `data:video/mp4;base64,${videoBuffer.toString('base64')}`;
-          }
-        } catch (readErr) {
-          console.warn('[FFmpeg] Could not read video buffer for inlining:', readErr);
+          publicUrl = await storeVideo(outputPath, outputFilename);
+        } catch (storageErr) {
+          console.warn('[FFmpeg] storeVideo failed, using local route fallback:', storageErr);
         }
 
         resolve({
