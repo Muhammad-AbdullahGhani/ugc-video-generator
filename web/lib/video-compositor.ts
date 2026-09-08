@@ -1,6 +1,8 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
+import { getAssetsDir } from './assets';
 
 export interface RenderOptions {
   backgroundVideoName: string;
@@ -41,9 +43,14 @@ function getFfmpegPath(): string {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
     if (ffmpegInstaller.path && fs.existsSync(ffmpegInstaller.path)) {
+      try {
+        fs.chmodSync(ffmpegInstaller.path, 0o755);
+      } catch {}
       return ffmpegInstaller.path;
     }
-  } catch {}
+  } catch (err) {
+    console.warn('[FFmpeg] @ffmpeg-installer lookup failed:', err);
+  }
   return 'ffmpeg';
 }
 
@@ -57,13 +64,21 @@ export async function renderUgcVideo(options: RenderOptions): Promise<RenderResu
   } = options;
 
   const publicDir = path.join(process.cwd(), 'public');
-  const assetsDir = path.join(publicDir, 'assets');
+  const assetsDir = getAssetsDir();
 
   // Support Vercel serverless (/tmp writable storage) and local public/renders
-  const isVercel = Boolean(process.env.VERCEL);
-  const rendersDir = isVercel
-    ? path.join('/tmp', 'renders')
-    : path.join(publicDir, 'renders');
+  let rendersDir = path.join(os.tmpdir(), 'renders');
+  if (!Boolean(process.env.VERCEL) && !Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME)) {
+    try {
+      const localRenders = path.join(publicDir, 'renders');
+      if (!fs.existsSync(localRenders)) {
+        fs.mkdirSync(localRenders, { recursive: true });
+      }
+      rendersDir = localRenders;
+    } catch {
+      rendersDir = path.join(os.tmpdir(), 'renders');
+    }
+  }
 
   if (!fs.existsSync(rendersDir)) {
     fs.mkdirSync(rendersDir, { recursive: true });

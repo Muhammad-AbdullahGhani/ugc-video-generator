@@ -6,8 +6,21 @@ export interface AvailableAssets {
   audios: string[];
 }
 
+export function getAssetsDir(): string {
+  const candidates = [
+    path.join(process.cwd(), 'public', 'assets'),
+    path.join(process.cwd(), 'web', 'public', 'assets'),
+  ];
+  for (const dir of candidates) {
+    if (fs.existsSync(dir)) {
+      return dir;
+    }
+  }
+  return path.join(process.cwd(), 'public', 'assets');
+}
+
 export function getAvailableAssets(): AvailableAssets {
-  const assetsDir = path.join(process.cwd(), 'public', 'assets');
+  const assetsDir = getAssetsDir();
   let videos: string[] = [];
   let audios: string[] = [];
 

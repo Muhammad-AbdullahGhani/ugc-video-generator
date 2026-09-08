@@ -1,5 +1,7 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
+import { getAssetsDir } from './assets';
 
 const LOCAL_MEMES: Record<string, string> = {
   'mind-blown': 'mind-blown.gif',
@@ -24,11 +26,9 @@ const LOCAL_MEMES: Record<string, string> = {
 };
 
 export async function fetchReactionGif(searchTerm: string): Promise<string> {
-  const assetsGifsDir = path.join(process.cwd(), 'public', 'assets', 'gifs');
-  const cacheDir = path.join(assetsGifsDir, 'cache');
-  if (!fs.existsSync(cacheDir)) {
-    fs.mkdirSync(cacheDir, { recursive: true });
-  }
+  const assetsDir = getAssetsDir();
+  const assetsGifsDir = path.join(assetsDir, 'gifs');
+  const cacheDir = path.join(os.tmpdir(), 'ugc-gif-cache');
 
   const cleanTerm = (searchTerm || 'mind blown').toLowerCase().trim();
 
@@ -46,6 +46,9 @@ export async function fetchReactionGif(searchTerm: string): Promise<string> {
           data.data?.[0]?.images?.downsized_medium?.url ||
           data.data?.[0]?.images?.original?.url;
         if (gifUrl) {
+          if (!fs.existsSync(cacheDir)) {
+            fs.mkdirSync(cacheDir, { recursive: true });
+          }
           const dest = path.join(cacheDir, `giphy_${Date.now()}.gif`);
           const gifRes = await fetch(gifUrl, { signal: AbortSignal.timeout(8000) });
           if (gifRes.ok) {

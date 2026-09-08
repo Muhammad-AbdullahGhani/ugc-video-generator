@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,10 +17,12 @@ export async function GET(
       return new NextResponse('Invalid video format requested', { status: 400 });
     }
 
-    // Check candidate locations: /tmp/renders (Vercel) and public/renders (local)
+    // Check candidate locations: /tmp/renders, os.tmpdir(), and public/renders
     const candidatePaths = [
       path.join('/tmp', 'renders', cleanFilename),
+      path.join(os.tmpdir(), 'renders', cleanFilename),
       path.join(process.cwd(), 'public', 'renders', cleanFilename),
+      path.join(process.cwd(), 'web', 'public', 'renders', cleanFilename),
     ];
 
     let targetPath = '';
