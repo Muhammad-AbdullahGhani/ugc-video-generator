@@ -19,15 +19,15 @@ function generateSaasIde() {
   console.log('1/4: Generating saas_dev_ide.mp4...');
 
   const codeLines = [
-    "// @linear/sdk v3.4 - Fast Sync Engine",
-    "import { Engine, RealtimeClient } from '@linear/core';",
-    "import { MetricsCollector } from '@linear/telemetry';",
+    "// @core/runtime v3.4 - Fast Async Engine",
+    "import { Engine, RealtimeClient } from '@core/runtime';",
+    "import { MetricsCollector } from '@core/telemetry';",
     "",
-    "export async function syncEngineeringWorkflow() {",
+    "export async function syncCoreWorkflow() {",
     "  const stream = new RealtimeClient({ latency: '12ms' });",
     "  const metrics = await MetricsCollector.getTelemetry();",
     "",
-    "  console.log(`[Linear Engine] Active issues: ${metrics.count}`);",
+    "  console.log(`[Core Engine] Active events: ${metrics.count}`);",
     "  const compiler = await Engine.compileOptimized({",
     "    concurrency: 32,",
     "    autoMerge: true,",
@@ -46,7 +46,7 @@ function generateSaasIde() {
   fs.writeFileSync(codeFile, codeLines, 'utf8');
 
   const termLines = [
-    "➜  linear-app git:(main) bun run build:telemetry",
+    "➜  workspace git:(main) bun run build:telemetry",
     "  ✔ Turbopack compiled 94 modules in 14ms",
     "  ✔ Automated ffprobe check: 720x1280 (9:16) [PASSED]",
     "  ✔ Latency: 0.04s • Zero dropped frames",
@@ -66,13 +66,13 @@ function generateSaasIde() {
     `[b1]drawbox=x=44:y=22:w=14:h=14:color=#FFBD2E:t=fill[b2]`,
     `[b2]drawbox=x=66:y=22:w=14:h=14:color=#27C93F:t=fill[b3]`,
     `[b3]drawbox=x=105:y=12:w=260:h=48:color=#242836:t=fill[tab1]`,
-    `[tab1]drawtext=text='LinearWorkflow.ts':fontfile='${escapedFontBold}':fontsize=18:fontcolor=#61AFEF:x=125:y=26[tabt]`,
+    `[tab1]drawtext=text='WorkflowEngine.ts':fontfile='${escapedFontBold}':fontsize=18:fontcolor=#61AFEF:x=125:y=26[tabt]`,
     `[tabt]drawbox=x=0:y=60:w=56:h=1220:color=#171923:t=fill[side1]`,
     `[side1]drawbox=x=14:y=80:w=28:h=28:color=#2A2E3D:t=fill[side2]`,
     `[side2]drawbox=x=14:y=122:w=28:h=28:color=#2A2E3D:t=fill[side3]`,
     `[side3]drawbox=x=56:y=60:w=50:h=850:color=#1A1D27:t=fill[gutter]`,
     `[gutter]drawbox=x=106:y=60:w=614:h=34:color=#1C1F2B:t=fill[breadbg]`,
-    `[breadbg]drawtext=text='src > workflow > LinearWorkflow.ts > syncEngineeringWorkflow()':fontfile='${escapedFont}':fontsize=13:fontcolor=#8A909E:x=120:y=70[bread]`,
+    `[breadbg]drawtext=text='src > workflow > WorkflowEngine.ts > syncCoreWorkflow()':fontfile='${escapedFont}':fontsize=13:fontcolor=#8A909E:x=120:y=70[bread]`,
     `[bread]drawtext=textfile='${escCode}':fontfile='${escapedFont}':fontsize=20:fontcolor=#E5E7EB:line_spacing=14:x=120:y='115 - mod(t*22, 300)'[code]`,
     `[code]drawbox=x=120:y='380 - mod(t*22, 300)':w=10:h=22:color=#61AFEF:t=fill:enable='lt(mod(t, 0.8), 0.4)'[cursor]`,
     `[cursor]drawbox=x=0:y=910:w=720:h=370:color=#0D0F14:t=fill[termbg]`,
@@ -97,7 +97,7 @@ function generateFitnessWorkout() {
   console.log('2/4: Generating fitness_workout.mp4...');
 
   const fitTopLines = [
-    "CAL AI  •  DYNAMIC NUTRITION & CARDIO SCAN",
+    "FITNESS PULSE  •  DYNAMIC NUTRITION & CARDIO SCAN",
     "CALORIC BURN: 540 kcal  |  HEART RATE: 148 BPM",
     "ACTIVE PACING: PEAK INTENSITY (SET 3 OF 4)"
   ].join('\n');
@@ -105,9 +105,9 @@ function generateFitnessWorkout() {
   fs.writeFileSync(fitTopFile, fitTopLines, 'utf8');
 
   const fitBotLines = [
-    "MACRO SCAN VERIFIED",
+    "BIOMETRIC SCAN VERIFIED",
     "PROTEIN: 38g  •  CARBS: 45g  •  HEALTHY FATS: 14g",
-    "Instant photo meal logging in under 3 seconds"
+    "Instant photo meal logging & dietary analytics"
   ].join('\n');
   const fitBotFile = path.join(__dirname, 'fit_bot.txt');
   fs.writeFileSync(fitBotFile, fitBotLines, 'utf8');

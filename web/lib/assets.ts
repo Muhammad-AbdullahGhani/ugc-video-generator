@@ -80,23 +80,30 @@ export function matchAssetsByCategory(
       return {
         backgroundVideo: fitnessVideo,
         audioTrack: hiphop,
-        defaultGif: 'mind-blown',
+        defaultGif: 'celebration',
         footageDescription: 'high-energy fitness telemetry reel with active cardio pacing HUD',
         audioDescription: 'upbeat rhythmic hip-hop beat',
-        rationale: 'Used an active fitness telemetry reel with live cardio HUD + upbeat rhythmic beat + reaction meme tailored for calorie/health tracking.',
+        rationale: 'Used an active fitness telemetry reel with live cardio HUD + upbeat rhythmic beat + celebration meme tailored for calorie/health tracking.',
       };
     case 'saas_dev':
+      return {
+        backgroundVideo: ideVideo,
+        audioTrack: driving,
+        defaultGif: 'ryan-gosling',
+        footageDescription: 'dark-mode IDE screen recording showing live scrolling TypeScript code & terminal build logs',
+        audioDescription: 'driving electronic synth soundtrack',
+        rationale: 'Used an active dark-mode IDE screen recording with live TypeScript compilation logs + driving synth audio + reaction meme tailored for this developer workflow.',
+      };
     case 'productivity':
       return {
         backgroundVideo: ideVideo,
         audioTrack: driving,
         defaultGif: 'mind-blown',
-        footageDescription: 'dark-mode IDE screen recording showing live scrolling TypeScript code & terminal build logs',
+        footageDescription: 'dark-mode workflow screen recording showing live code & terminal build logs',
         audioDescription: 'driving electronic synth soundtrack',
-        rationale: 'Used an active dark-mode IDE screen recording with live TypeScript compilation logs + driving synth audio + reaction meme tailored for this developer workflow.',
+        rationale: 'Used an active workflow screen recording + driving synth audio + mind-blown reaction meme tailored for productivity speed.',
       };
     case 'food_beverage':
-    case 'ecommerce':
       return {
         backgroundVideo: foodVideo,
         audioTrack: acoustic,
@@ -104,6 +111,15 @@ export function matchAssetsByCategory(
         footageDescription: 'aesthetic culinary studio reel with botanical nutrition breakdown & recipe badges',
         audioDescription: 'bright acoustic soundtrack',
         rationale: 'Used an aesthetic culinary studio reel with macro nutrition breakdown + uplifting acoustic soundtrack + celebration meme tailored for modern beverage/DTC appeal.',
+      };
+    case 'ecommerce':
+      return {
+        backgroundVideo: foodVideo,
+        audioTrack: acoustic,
+        defaultGif: 'shocked',
+        footageDescription: 'vibrant product showcase reel with real-time conversion badges',
+        audioDescription: 'bright acoustic soundtrack',
+        rationale: 'Used a vibrant product showcase reel + uplifting acoustic soundtrack + shocked reaction meme tailored for consumer ecommerce appeal.',
       };
     case 'fintech':
       return {

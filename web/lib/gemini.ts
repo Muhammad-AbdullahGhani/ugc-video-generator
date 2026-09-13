@@ -44,10 +44,15 @@ Instructions:
 1. "category": Identify the product category from: ["fitness", "saas_dev", "food_beverage", "productivity", "ecommerce", "fintech", "general"].
 2. "hook_text": Write a punchy, highly personalized 1-2 sentence kinetic text overlay (under 25 words total).
    - IMPORTANT: If real social-proof metrics exist (e.g. "${metadata?.socialProof || ''}" or stats in the copy like 1M+ users, 4.9 stars, 10x faster, $0), weave them naturally into the hook!
-   - Avoid generic placeholder text like "Transform your workflow" or "This tool does it in 3 clicks". Make it specifically about THIS product.
-3. "gif_search_term": Provide a relevant reaction or meme search query matching the vibe (e.g. "mind blown", "ryan gosling", "shocked", "celebration", "money").
+3. "gif_search_term": Select the most fitting reaction meme from: ["celebration", "ryan gosling", "shocked", "money", "mind blown", "confused"].
+   - "celebration": Best for fitness, health, calorie tracking, gym gains, food & beverage, or milestone achievements.
+   - "ryan gosling": Best for developer tools, IDEs, code editors, CLI tools, and sleek developer-focused SaaS.
+   - "money": Best for fintech, high ROI, payments, revenue growth, or ecommerce savings.
+   - "shocked": Best for surprising statistics, dramatic speedups, or hard-to-believe claims.
+   - "confused": Best for chaotic manual workflows that this tool solves.
+   - "mind blown": Best for cutting-edge AI breakthroughs and magical automation.
 4. "brand_color": Provide a hex color code (e.g. "${metadata?.themeColor || '#FF6B00'}" or a dominant accent color suited for this brand).
-5. "rationale": Write a clear, 1-sentence decision rationale explaining WHY the background clip, meme visual, and soundtrack style fit this product (e.g., "Used an energetic vertical reel + 'mind blown' reaction meme + upbeat soundtrack because Cal AI is a photo-based fitness app with instant meal scanning.").
+5. "rationale": Write a clear, 1-sentence decision rationale explaining WHY the background clip, meme visual, and soundtrack style fit this product (e.g., "Used an energetic vertical reel + 'celebration' reaction meme + upbeat soundtrack because MyFitnessPal is a photo-based fitness app with instant meal scanning.").
 6. "summary": A 1-sentence factual description of what the product does.
 
 Return a strict JSON object matching this schema:

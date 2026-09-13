@@ -28,3 +28,7 @@ next-env.d.ts
 # Renders
 **/public/renders/*.mp4
 !**/public/renders/.gitkeep
+
+# Local data
+.data/
+**/.data/

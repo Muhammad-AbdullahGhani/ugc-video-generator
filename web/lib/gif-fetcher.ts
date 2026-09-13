@@ -5,24 +5,46 @@ import { getAssetsDir } from './assets';
 
 const LOCAL_MEMES: Record<string, string> = {
   'mind-blown': 'mind-blown.gif',
+  'mind blown': 'mind-blown.gif',
+  'mind': 'mind-blown.gif',
   'brain': 'mind-blown.gif',
+  'genius': 'mind-blown.gif',
+  'ryan-gosling': 'ryan-gosling.gif',
+  'ryan gosling': 'ryan-gosling.gif',
   'ryan': 'ryan-gosling.gif',
   'gosling': 'ryan-gosling.gif',
+  'dev': 'ryan-gosling.gif',
+  'code': 'ryan-gosling.gif',
+  'engineer': 'ryan-gosling.gif',
+  'nod': 'ryan-gosling.gif',
+  'shocked': 'shocked.gif',
   'shock': 'shocked.gif',
   'surprised': 'shocked.gif',
   'wow': 'shocked.gif',
   'omg': 'shocked.gif',
+  'disbelief': 'shocked.gif',
   'money': 'money.gif',
   'shut up': 'money.gif',
+  'take my money': 'money.gif',
   'buy': 'money.gif',
   'cash': 'money.gif',
+  'dollar': 'money.gif',
+  'revenue': 'money.gif',
+  'roi': 'money.gif',
+  'celebration': 'celebration.gif',
   'celebrat': 'celebration.gif',
   'dance': 'celebration.gif',
   'win': 'celebration.gif',
   'party': 'celebration.gif',
+  'fitness': 'celebration.gif',
+  'workout': 'celebration.gif',
+  'gains': 'celebration.gif',
+  'confused': 'confused.gif',
   'confus': 'confused.gif',
   'math': 'confused.gif',
   'what': 'confused.gif',
+  'question': 'confused.gif',
+  'complex': 'confused.gif',
 };
 
 export async function fetchReactionGif(searchTerm: string): Promise<string> {
@@ -65,6 +87,12 @@ export async function fetchReactionGif(searchTerm: string): Promise<string> {
   }
 
   // 2. Fallback to local curated meme library
+  const directCandidate = path.join(assetsGifsDir, `${cleanTerm.replace(/[^a-z0-9]+/g, '-')}.gif`);
+  if (fs.existsSync(directCandidate)) {
+    console.log(`[GIF] Matched direct filename "${cleanTerm}" -> ${path.basename(directCandidate)}`);
+    return directCandidate;
+  }
+
   for (const [keyword, filename] of Object.entries(LOCAL_MEMES)) {
     if (cleanTerm.includes(keyword)) {
       const localPath = path.join(assetsGifsDir, filename);

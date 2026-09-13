@@ -1,4 +1,4 @@
-➜  linear-app git:(main) bun run build:telemetry
+➜  workspace git:(main) bun run build:telemetry
   ✔ Turbopack compiled 94 modules in 14ms
   ✔ Automated ffprobe check: 720x1280 (9:16) [PASSED]
   ✔ Latency: 0.04s • Zero dropped frames
