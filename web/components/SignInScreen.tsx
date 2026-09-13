@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
 import {
   Film,
@@ -10,13 +10,41 @@ import {
   ArrowRight,
   ShieldCheck,
   Play,
+  Key,
+  Copy,
+  Check,
+  X,
+  ExternalLink,
 } from 'lucide-react';
 
 export default function SignInScreen() {
   const [loadingGoogle, setLoadingGoogle] = useState(false);
   const [loadingGuest, setLoadingGuest] = useState(false);
+  const [googleConfigured, setGoogleConfigured] = useState<boolean | null>(null);
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/auth/config')
+      .then((res) => res.json())
+      .then((data) => {
+        if (typeof data.googleConfigured === 'boolean') {
+          setGoogleConfigured(data.googleConfigured);
+        }
+      })
+      .catch(() => {
+        setGoogleConfigured(false);
+      });
+  }, []);
 
   const handleGoogleSignIn = async () => {
+    // If Google OAuth credentials are not configured, display the setup guidance modal
+    // so the user never gets dumped on Google's raw Error 400 page!
+    if (googleConfigured === false) {
+      setShowConfigModal(true);
+      return;
+    }
+
     try {
       setLoadingGoogle(true);
       await signIn('google');
@@ -29,6 +57,7 @@ export default function SignInScreen() {
   const handleGuestSignIn = async () => {
     try {
       setLoadingGuest(true);
+      setShowConfigModal(false);
       await signIn('demo-guest', {
         name: 'Creator Guest',
         email: 'guest@reelforge.ai',
@@ -38,6 +67,13 @@ export default function SignInScreen() {
       console.error('Guest sign in error:', err);
       setLoadingGuest(false);
     }
+  };
+
+  const copyEnvSnippet = () => {
+    const snippet = `GOOGLE_CLIENT_ID="your_google_client_id_here"\nGOOGLE_CLIENT_SECRET="your_google_client_secret_here"`;
+    navigator.clipboard.writeText(snippet);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -143,11 +179,32 @@ export default function SignInScreen() {
             </div>
 
             <div className="space-y-3.5">
+              {/* Primary Instant Action: Explore as Demo Creator */}
+              <button
+                onClick={handleGuestSignIn}
+                disabled={loadingGoogle || loadingGuest}
+                className="w-full flex items-center justify-center gap-2.5 px-4 py-3 rounded-xl bg-gradient-to-r from-[#FF6B00] to-[#E55500] hover:from-[#FF7D1E] hover:to-[#F06000] text-white font-semibold text-sm transition-all shadow-lg shadow-[#FF6B00]/25 cursor-pointer active:scale-[0.99]"
+              >
+                {loadingGuest ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4 text-white" />
+                )}
+                <span>Explore as Demo Creator (1-Click Instant)</span>
+              </button>
+
+              <div className="relative flex items-center justify-center my-4">
+                <div className="border-t border-[#252A34] w-full" />
+                <span className="bg-[#13151B] px-3 text-[11px] text-[#6B7280] uppercase tracking-wider font-mono">
+                  or sign in with oauth
+                </span>
+              </div>
+
               {/* Google OAuth Button */}
               <button
                 onClick={handleGoogleSignIn}
                 disabled={loadingGoogle || loadingGuest}
-                className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-white hover:bg-neutral-100 text-neutral-900 font-medium text-sm transition-all shadow hover:shadow-lg disabled:opacity-60 cursor-pointer active:scale-[0.99]"
+                className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-xl bg-white hover:bg-neutral-100 text-neutral-900 font-medium text-xs sm:text-sm transition-all shadow hover:shadow-lg disabled:opacity-60 cursor-pointer active:scale-[0.99] relative"
               >
                 {loadingGoogle ? (
                   <div className="w-4 h-4 border-2 border-neutral-800 border-t-transparent rounded-full animate-spin" />
@@ -172,31 +229,15 @@ export default function SignInScreen() {
                   </svg>
                 )}
                 <span>Continue with Google</span>
-              </button>
-
-              <div className="relative flex items-center justify-center my-4">
-                <div className="border-t border-[#252A34] w-full" />
-                <span className="bg-[#13151B] px-3 text-[11px] text-[#6B7280] uppercase tracking-wider font-mono">
-                  or evaluation mode
-                </span>
-              </div>
-
-              {/* Demo Guest Sign-In (Guarantees fresh reviewers can test with 0 config!) */}
-              <button
-                onClick={handleGuestSignIn}
-                disabled={loadingGoogle || loadingGuest}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#1D222B] hover:bg-[#252B37] text-[#D1D5DB] hover:text-white border border-[#2D3342] hover:border-[#FF6B00]/40 font-medium text-xs transition-all cursor-pointer"
-              >
-                {loadingGuest ? (
-                  <div className="w-3.5 h-3.5 border-2 border-[#FF6B00] border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <ArrowRight className="w-3.5 h-3.5 text-[#FF8533]" />
+                {googleConfigured === false && (
+                  <span className="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                    Setup Guide
+                  </span>
                 )}
-                <span>Explore as Demo Creator (Instant Guest Session)</span>
               </button>
             </div>
 
-            {/* Guarantees Note */}
+            {/* Note */}
             <div className="mt-6 pt-5 border-t border-[#1F232D] flex items-center justify-center gap-2 text-[11px] text-[#717888]">
               <ShieldCheck className="w-3.5 h-3.5 text-[#10B981]" />
               <span>Standard NextAuth OAuth 2.0 • No credentials stored</span>
@@ -204,6 +245,99 @@ export default function SignInScreen() {
           </div>
         </div>
       </main>
+
+      {/* Google OAuth Setup Guidance Modal */}
+      {showConfigModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-[#13161D] border border-[#2B3140] rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
+            <button
+              onClick={() => setShowConfigModal(false)}
+              className="absolute top-4 right-4 text-[#8A909E] hover:text-white p-1 rounded-lg hover:bg-[#1E2330] transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-[#FF6B00]/15 border border-[#FF6B00]/30 flex items-center justify-center text-[#FF8533]">
+                <Key className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Google OAuth Setup</h3>
+                <p className="text-xs text-[#8A909E]">
+                  Required for visitors logging in with personal Google accounts
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4 text-xs text-[#D1D5DB] leading-relaxed">
+              <p>
+                Google returned <code className="bg-[#1C202B] px-1.5 py-0.5 rounded text-amber-400 font-mono">Error 400: Missing client_id</code> because <code className="text-white font-mono">GOOGLE_CLIENT_ID</code> has not been added to <code className="text-white font-mono">web/.env.local</code> yet.
+              </p>
+
+              <div className="p-3 rounded-xl bg-[#0B0D11] border border-[#222733] space-y-2">
+                <div className="flex items-center justify-between text-[11px] text-[#8A909E] font-mono">
+                  <span>Add to web/.env.local:</span>
+                  <button
+                    onClick={copyEnvSnippet}
+                    className="inline-flex items-center gap-1 text-[#FF8533] hover:underline cursor-pointer"
+                  >
+                    {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copied ? 'Copied!' : 'Copy snippet'}</span>
+                  </button>
+                </div>
+                <pre className="font-mono text-[11px] text-[#E5E7EB] bg-[#141720] p-2.5 rounded-lg overflow-x-auto">
+{`GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET="your-client-secret"`}
+                </pre>
+                <div className="text-[11px] text-[#8A909E]">
+                  Authorized redirect URI:{' '}
+                  <span className="font-mono text-white select-all">
+                    http://localhost:3000/api/auth/callback/google
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <a
+                  href="https://console.cloud.google.com/apis/credentials"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs text-[#FF8533] hover:underline"
+                >
+                  <span>Google Cloud Console</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+
+                <span className="text-[11px] text-[#6B7280]">
+                  Takes ~1 minute to configure
+                </span>
+              </div>
+
+              <div className="pt-3 border-t border-[#222733] flex flex-col sm:flex-row items-center gap-2.5">
+                <button
+                  onClick={handleGuestSignIn}
+                  disabled={loadingGuest}
+                  className="w-full flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#FF6B00] hover:bg-[#FF8533] text-white font-semibold text-xs transition cursor-pointer shadow-md shadow-[#FF6B00]/20"
+                >
+                  {loadingGuest ? (
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  )}
+                  <span>Continue as Demo Creator Now</span>
+                </button>
+
+                <button
+                  onClick={() => setShowConfigModal(false)}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-[#1C202B] hover:bg-[#252A38] text-[#8A909E] hover:text-white text-xs transition cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer Branding */}
       <footer className="relative z-10 max-w-7xl w-full mx-auto px-6 py-6 text-center text-xs text-[#525763] flex flex-col sm:flex-row items-center justify-between gap-3">

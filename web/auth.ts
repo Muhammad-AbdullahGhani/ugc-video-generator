@@ -2,12 +2,23 @@ import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 
+const hasGoogleAuth = Boolean(
+  process.env.GOOGLE_CLIENT_ID &&
+  process.env.GOOGLE_CLIENT_SECRET &&
+  process.env.GOOGLE_CLIENT_ID.trim().length > 0 &&
+  process.env.GOOGLE_CLIENT_SECRET.trim().length > 0
+);
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID || "",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
-    }),
+    ...(hasGoogleAuth
+      ? [
+          Google({
+            clientId: process.env.GOOGLE_CLIENT_ID!.trim(),
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET!.trim(),
+          }),
+        ]
+      : []),
     Credentials({
       id: "demo-guest",
       name: "Demo Guest",
