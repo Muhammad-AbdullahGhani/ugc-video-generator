@@ -44,9 +44,9 @@ Instructions:
 1. "category": Identify the product category from: ["fitness", "saas_dev", "food_beverage", "productivity", "ecommerce", "fintech", "general"].
 2. "hook_text": Write a punchy, highly personalized 1-2 sentence kinetic text overlay (under 25 words total).
    - IMPORTANT: If real social-proof metrics exist (e.g. "${metadata?.socialProof || ''}" or stats in the copy like 1M+ users, 4.9 stars, 10x faster, $0), weave them naturally into the hook!
-3. "gif_search_term": Select the most fitting reaction meme from: ["celebration", "ryan gosling", "shocked", "money", "mind blown", "confused"].
+3. "gif_search_term": Select the most fitting reaction meme from: ["celebration", "focused nod", "shocked", "money", "mind blown", "confused"].
    - "celebration": Best for fitness, health, calorie tracking, gym gains, food & beverage, or milestone achievements.
-   - "ryan gosling": Best for developer tools, IDEs, code editors, CLI tools, and sleek developer-focused SaaS.
+   - "focused nod": Best for developer tools, IDEs, code editors, CLI tools, and sleek developer-focused SaaS.
    - "money": Best for fintech, high ROI, payments, revenue growth, or ecommerce savings.
    - "shocked": Best for surprising statistics, dramatic speedups, or hard-to-believe claims.
    - "confused": Best for chaotic manual workflows that this tool solves.

@@ -72,7 +72,7 @@ export const MOOD_POOLS: Record<MemeMood, MoodConfig> = {
   },
   focused: {
     name: 'focused/nodding',
-    gifs: ['ryan-gosling.gif'],
+    gifs: ['focused-nod.gif', 'typing-fast.gif'],
     giphySearch: 'approving nod focused',
   },
 };
@@ -110,7 +110,7 @@ const CATEGORY_MAP: Record<ProductCategory, CategoryPoolConfig> = {
   saas_dev: {
     videoCandidates: ['saas_dev_ide.mp4', 'saas_dev_terminal.mp4'],
     mood: 'focused',
-    defaultGif: 'ryan-gosling.gif',
+    defaultGif: 'focused-nod.gif',
     audioKeyword: 'driving-ambition',
     footageDescription: 'dark-mode IDE screen recording showing live scrolling TypeScript code & terminal build logs',
     audioDescription: 'driving electronic synth soundtrack',
