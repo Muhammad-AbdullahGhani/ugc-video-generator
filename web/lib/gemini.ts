@@ -1,18 +1,12 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { getAvailableAssets, pickRandomAsset } from './assets';
-
-export interface VideoBlueprint {
-  hook_text: string;
-  gif_search_term: string;
-  background_video: string;
-  audio_track: string;
-  source_url?: string;
-  summary?: string;
-}
+import { getAvailableAssets, matchAssetsByCategory, ProductCategory } from './assets';
+import { PageMetadata } from './metadata-extractor';
+import { VideoBlueprint } from '@/types/chat';
 
 export async function generateVideoBlueprint(
   markdownContent: string,
-  sourceUrl: string
+  sourceUrl: string,
+  metadata?: PageMetadata
 ): Promise<VideoBlueprint> {
   const apiKey =
     process.env.GEMINI_API_KEY ||
@@ -33,22 +27,36 @@ export async function generateVideoBlueprint(
   const genAI = new GoogleGenerativeAI(apiKey);
 
   const prompt = `
-Analyze this website content from: ${sourceUrl}
+Analyze this product page from: ${sourceUrl}
 
-Website Content (Markdown):
+Extracted Real Page Metadata:
+- Page Title / OG Title: ${metadata?.ogTitle || 'None extracted'}
+- Meta Description: ${metadata?.ogDescription || 'None extracted'}
+- Extracted Theme / Brand Color: ${metadata?.themeColor || 'None extracted'}
+- Detected Social Proof / Numbers: ${metadata?.socialProof || 'None extracted'}
+
+Scraped Website Content (Markdown):
 """
-${markdownContent}
+${markdownContent.slice(0, 8000)}
 """
 
 Instructions:
-1. "hook_text": Write a punchy, 1-2 sentence kinetic text overlay (under 25 words total). It must sound like an authentic creator recommendation or shocking realization (e.g., "Stop wasting hours on X — this tool does it in 3 clicks.", "I found the secret hack everyone is talking about.").
-2. "gif_search_term": Provide a concise meme or reaction keyword query suitable for Giphy/Tenor (e.g. "mind blown", "ryan gosling", "shocked", "shut up and take my money", "confused math lady").
-3. "summary": A brief 1-sentence description of what the product actually does.
+1. "category": Identify the product category from: ["fitness", "saas_dev", "food_beverage", "productivity", "ecommerce", "fintech", "general"].
+2. "hook_text": Write a punchy, highly personalized 1-2 sentence kinetic text overlay (under 25 words total).
+   - IMPORTANT: If real social-proof metrics exist (e.g. "${metadata?.socialProof || ''}" or stats in the copy like 1M+ users, 4.9 stars, 10x faster, $0), weave them naturally into the hook!
+   - Avoid generic placeholder text like "Transform your workflow" or "This tool does it in 3 clicks". Make it specifically about THIS product.
+3. "gif_search_term": Provide a relevant reaction or meme search query matching the vibe (e.g. "mind blown", "ryan gosling", "shocked", "celebration", "money").
+4. "brand_color": Provide a hex color code (e.g. "${metadata?.themeColor || '#FF6B00'}" or a dominant accent color suited for this brand).
+5. "rationale": Write a clear, 1-sentence decision rationale explaining WHY the background clip, meme visual, and soundtrack style fit this product (e.g., "Used an energetic vertical reel + 'mind blown' reaction meme + upbeat soundtrack because Cal AI is a photo-based fitness app with instant meal scanning.").
+6. "summary": A 1-sentence factual description of what the product does.
 
 Return a strict JSON object matching this schema:
 {
+  "category": "fitness" | "saas_dev" | "food_beverage" | "productivity" | "ecommerce" | "fintech" | "general",
   "hook_text": string,
   "gif_search_term": string,
+  "brand_color": string,
+  "rationale": string,
   "summary": string
 }
 `.trim();
@@ -58,21 +66,20 @@ Return a strict JSON object matching this schema:
 
   for (const modelCandidate of candidateModels) {
     try {
-      console.log(`[Gemini] Generating UGC blueprint using model: ${modelCandidate}`);
+      console.log(`[Gemini] Generating personalized blueprint using: ${modelCandidate}`);
       const model = genAI.getGenerativeModel({
         model: modelCandidate,
         systemInstruction:
-          'You are a world-class viral UGC (User-Generated Content) marketer and TikTok/Reels ad creator. Your job is to extract the core value proposition of a product from its website content and write an irresistible, high-retention video hook and matching meme visual.',
+          'You are a senior viral UGC video director. You analyze real product copy, real social proof, and brand positioning to design personalized, high-converting video blueprints rather than generic templates.',
         generationConfig: {
           responseMimeType: 'application/json',
-          temperature: 0.7,
+          temperature: 0.65,
         },
       });
 
       const result = await model.generateContent(prompt);
       responseText = result.response.text();
       if (responseText) {
-        console.log(`[Gemini] Generation succeeded with model: ${modelCandidate}`);
         break;
       }
     } catch (err: unknown) {
@@ -98,11 +105,19 @@ Return a strict JSON object matching this schema:
     throw lastError || new Error('All candidate Flash models failed to generate response.');
   }
 
-  let parsed: { hook_text?: string; gif_search_term?: string; summary?: string };
+  interface GeminiParsed {
+    category?: ProductCategory;
+    hook_text?: string;
+    gif_search_term?: string;
+    brand_color?: string;
+    rationale?: string;
+    summary?: string;
+  }
+
+  let parsed: GeminiParsed;
   try {
     parsed = JSON.parse(responseText);
-  } catch (err) {
-    console.error('Failed to parse Gemini JSON response directly:', responseText);
+  } catch {
     const match = responseText.match(/\{[\s\S]*\}/);
     if (match) {
       parsed = JSON.parse(match[0]);
@@ -111,18 +126,30 @@ Return a strict JSON object matching this schema:
     }
   }
 
-  // Randomly select background video and audio track from /web/public/assets
-  const { videos, audios } = getAvailableAssets();
-  const background_video = pickRandomAsset(videos, 'background_video.mp4');
-  const audio_track = pickRandomAsset(audios, 'audio_track.mp3');
+  const category: ProductCategory = parsed.category || 'general';
+
+  // Category-aware asset matching
+  const available = getAvailableAssets();
+  const matched = matchAssetsByCategory(category, available);
+
+  const background_video = matched.backgroundVideo;
+  const audio_track = matched.audioTrack;
+  const gif_search_term = parsed.gif_search_term || matched.defaultGif;
+  const brand_color = parsed.brand_color || metadata?.themeColor || '#FF6B00';
+  const rationale = parsed.rationale || matched.rationale;
 
   return {
-    hook_text: parsed.hook_text || 'Transform your workflow in seconds with this tool.',
-    gif_search_term: parsed.gif_search_term || 'mind blown',
+    hook_text: parsed.hook_text || `Stop struggling with manual workflows — discover ${metadata?.ogTitle || sourceUrl}.`,
+    gif_search_term,
     background_video,
     audio_track,
     source_url: sourceUrl,
     summary: parsed.summary,
+    category,
+    rationale,
+    brand_color,
+    og_title: metadata?.ogTitle,
+    social_proof: metadata?.socialProof,
   };
 }
 
@@ -136,7 +163,7 @@ export async function generateConversationalReply(
     process.env.GOOGLE_GENAI_API_KEY;
 
   if (!apiKey) {
-    return "Hi there! I'm your UGC Video Assistant. Drop a product URL anytime (e.g. `calai.app`), and I'll generate a 5–10s marketing video for you!";
+    return "Hi there! I'm your ReelForge UGC Assistant. Drop any product URL (e.g. `calai.app` or `linear.app`), and I'll generate a 9:16 vertical video for you!";
   }
 
   const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
@@ -147,7 +174,7 @@ export async function generateConversationalReply(
   const genAI = new GoogleGenerativeAI(apiKey);
 
   const systemInstruction =
-    "You are a friendly, witty, and helpful AI assistant specialized in UGC video marketing. You chat naturally, warmly, and concisely like ChatGPT. You can answer general questions, chat casually, tell jokes, or brainstorm marketing ideas. When asked what you can do or when naturally appropriate, let the user know they can drop any product or website URL (like calai.app or linear.app) into the chat anytime to generate an instant 5–10s UGC marketing video.";
+    "You are ReelForge's charismatic AI UGC producer. You chat naturally, concisely, and warmly. You answer general questions, share UGC marketing advice, or talk casually. You NEVER pretend to render a video unless a URL or product name is explicitly shared. When asked what you can do or when appropriate, invite the user to paste any product URL to generate a custom 9:16 vertical marketing video.";
 
   for (const modelCandidate of candidateModels) {
     try {
@@ -160,7 +187,6 @@ export async function generateConversationalReply(
         },
       });
 
-      // Build context from recent history if provided
       let prompt = userMessage;
       if (history && history.length > 0) {
         const recent = history.slice(-5);
@@ -192,5 +218,5 @@ export async function generateConversationalReply(
     }
   }
 
-  return "Hey there! How can I help you today? Feel free to ask me questions, or drop a product link (e.g. `calai.app`) to generate a UGC video ad!";
+  return "Hey there! How can I help you today? Feel free to ask questions or drop a product link (e.g. `calai.app`) to generate a custom UGC video ad!";
 }

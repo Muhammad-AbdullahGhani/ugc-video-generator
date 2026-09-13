@@ -7,6 +7,12 @@ import {
   AlertCircle,
   RefreshCw,
   Edit3,
+  Globe,
+  Sparkles,
+  Layers,
+  Music,
+  Film,
+  ShieldCheck,
 } from 'lucide-react';
 import { PipelineStep, StepId } from '@/types/chat';
 
@@ -19,31 +25,42 @@ interface PipelineTrackerProps {
   onEditUrl?: (url: string) => void;
 }
 
-const DEFAULT_STEPS: { id: StepId; label: string; defaultDesc: string }[] = [
+const DEFAULT_STEPS: { id: StepId; label: string; defaultDesc: string; icon: React.ElementType }[] = [
   {
     id: 'reading_url',
-    label: 'Reading Website Content',
-    defaultDesc: 'Scraping website Markdown and copy via Jina AI...',
+    label: 'Website & Metadata Ingestion',
+    defaultDesc: 'Scraping page copy, OG tags, theme color, and social proof...',
+    icon: Globe,
   },
   {
     id: 'extracting_context',
-    label: 'Extracting Product Context',
-    defaultDesc: 'Analyzing product positioning and key value propositions...',
+    label: 'Product Context & Positioning',
+    defaultDesc: 'Analyzing category, pain points, and audience hooks with Gemini...',
+    icon: Sparkles,
   },
   {
     id: 'generating_blueprint',
-    label: 'Generating UGC Blueprint',
-    defaultDesc: 'Engineering viral typography hook & reaction search terms...',
+    label: 'Personalized UGC Blueprint',
+    defaultDesc: 'Crafting viral hook incorporating real social proof stats...',
+    icon: Layers,
   },
   {
     id: 'matching_media',
-    label: 'Matching Reel & Soundtrack',
-    defaultDesc: 'Selecting background vertical clip & trending audio track...',
+    label: 'Industry Asset Matching',
+    defaultDesc: 'Selecting vertical background & trending soundtrack for category...',
+    icon: Music,
   },
   {
     id: 'compositing_video',
     label: 'Compositing 9:16 Video',
-    defaultDesc: 'Compositing 1080x1920 MP4 with kinetic typography & audio mix...',
+    defaultDesc: 'Compositing 1080x1920 MP4 with brand styling & kinetic typography...',
+    icon: Film,
+  },
+  {
+    id: 'validating_video',
+    label: 'Automated Quality Verification',
+    defaultDesc: 'Validating duration (5–10s), 9:16 vertical resolution, and audio via ffprobe...',
+    icon: ShieldCheck,
   },
 ];
 
@@ -55,13 +72,11 @@ export default function PipelineTracker({
   onRetry,
   onEditUrl,
 }: PipelineTrackerProps) {
-  // Map step data by ID
   const stepsMap = new Map<StepId, PipelineStep>();
   steps.forEach((s) => stepsMap.set(s.id, s));
 
-  // Determine completed step count
   const completedCount = steps.filter((s) => s.status === 'completed').length;
-  const isFinished = completedCount === DEFAULT_STEPS.length;
+  const isFinished = completedCount >= DEFAULT_STEPS.length;
   const hasError = !!error || steps.some((s) => s.status === 'error');
 
   return (
@@ -85,8 +100,8 @@ export default function PipelineTracker({
           {hasError
             ? 'Pipeline Interrupted'
             : isFinished
-            ? '5/5 Completed'
-            : `Step ${Math.min(completedCount + 1, 5)} of 5`}
+            ? '6/6 Verified'
+            : `Step ${Math.min(completedCount + 1, 6)} of 6`}
         </span>
       </div>
 
@@ -202,7 +217,7 @@ export default function PipelineTracker({
             {detectedUrl && onEditUrl && (
               <button
                 onClick={() => onEditUrl(detectedUrl)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1D222C] hover:bg-[#272D3A] text-xs text-[#D1D5DB] border border-[#2D3442] transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#1D222C] hover:bg-[#272D3A] text-xs text-[#D1D5DB] border border-[#2D3442] transition cursor-pointer"
               >
                 <Edit3 className="w-3.5 h-3.5 text-[#9CA3AF]" />
                 <span>Edit Link</span>

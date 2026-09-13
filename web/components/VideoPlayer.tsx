@@ -15,6 +15,8 @@ import {
   Share2,
   ChevronDown,
   ChevronUp,
+  Lightbulb,
+  ShieldCheck,
 } from 'lucide-react';
 import { VideoBlueprint } from '@/types/chat';
 
@@ -150,8 +152,21 @@ export default function VideoPlayer({
     }
   };
 
-  const handleCopyLink = async (e: React.MouseEvent) => {
+  const handleShare = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: blueprint?.og_title || 'UGC Video Ad',
+          text: `Check out this UGC video for ${blueprint?.source_url || 'product'}!`,
+          url: videoUrl,
+        });
+        return;
+      } catch {
+        // User canceled or failed, fallback to copy
+      }
+    }
+
     try {
       await navigator.clipboard.writeText(videoUrl);
       setIsCopied(true);
@@ -179,12 +194,23 @@ export default function VideoPlayer({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono text-[#FF8533] bg-[#FF6B00]/10 border border-[#FF6B00]/30 px-2 py-0.5 rounded-full">
-            1080x1920 • 30fps
+          {blueprint?.brand_color && (
+            <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#1A1D26] border border-[#2A3140] text-[#D1D5DB]">
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: blueprint.brand_color }}
+              />
+              {blueprint.brand_color}
+            </span>
+          )}
+
+          <span className="text-[10px] font-mono text-[#FF8533] bg-[#FF6B00]/10 border border-[#FF6B00]/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+            <ShieldCheck className="w-3 h-3" /> ffprobe verified
           </span>
+
           <button
-            onClick={handleCopyLink}
-            title="Copy video link"
+            onClick={handleShare}
+            title="Share or copy video link"
             className="p-1.5 rounded-lg bg-[#1C2028] hover:bg-[#252B36] text-[#9CA3AF] hover:text-white border border-[#2A303C] transition cursor-pointer"
           >
             {isCopied ? (
@@ -283,6 +309,16 @@ export default function VideoPlayer({
         </div>
       </div>
 
+      {/* Decision Rationale Strip (Proves decision, not random draw) */}
+      {blueprint?.rationale && (
+        <div className="px-4 py-2.5 bg-[#101217] border-t border-[#222733] flex items-start gap-2 text-xs">
+          <Lightbulb className="w-3.5 h-3.5 text-[#FF8533] flex-none mt-0.5" />
+          <p className="text-[#9CA3AF] text-[11px] leading-relaxed">
+            <strong className="text-[#D1D5DB]">Creative Decision:</strong> {blueprint.rationale}
+          </p>
+        </div>
+      )}
+
       {/* Action Bar */}
       <div className="p-3.5 bg-[#121419] border-t border-[#252A34] flex flex-wrap items-center justify-between gap-2.5">
         <button
@@ -300,7 +336,7 @@ export default function VideoPlayer({
 
         <div className="flex items-center gap-2">
           <button
-            onClick={handleCopyLink}
+            onClick={handleShare}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#191D26] hover:bg-[#232936] text-xs text-[#D1D5DB] hover:text-white border border-[#2A303E] transition cursor-pointer"
           >
             {isCopied ? (
@@ -311,7 +347,7 @@ export default function VideoPlayer({
             ) : (
               <>
                 <Share2 className="w-3.5 h-3.5 text-[#FF8533]" />
-                <span>Share Link</span>
+                <span>Share Video</span>
               </>
             )}
           </button>
@@ -332,7 +368,7 @@ export default function VideoPlayer({
         <div className="p-4 bg-[#0F1116] border-t border-[#252A34] text-xs space-y-3">
           <div>
             <span className="text-[11px] text-[#717888] font-medium block mb-1">
-              Kinetic Hook Script:
+              Personalized Hook Overlay:
             </span>
             <div className="p-2.5 rounded-lg bg-[#151820] border border-[#252A34] text-white font-medium">
               &ldquo;{blueprint.hook_text}&rdquo;
@@ -341,15 +377,15 @@ export default function VideoPlayer({
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
             <div className="p-2.5 rounded-lg bg-[#151820] border border-[#252A34]">
-              <span className="text-[#717888] block">Meme GIF Search</span>
-              <span className="font-mono text-[#D1D5DB] truncate block mt-0.5">
-                {blueprint.gif_search_term}
+              <span className="text-[#717888] block">Industry Category</span>
+              <span className="font-mono text-[#FF8533] uppercase truncate block mt-0.5">
+                {blueprint.category || 'General'}
               </span>
             </div>
             <div className="p-2.5 rounded-lg bg-[#151820] border border-[#252A34]">
-              <span className="text-[#717888] block">Vertical Reel</span>
+              <span className="text-[#717888] block">Meme Reaction GIF</span>
               <span className="font-mono text-[#D1D5DB] truncate block mt-0.5">
-                {blueprint.background_video}
+                {blueprint.gif_search_term}
               </span>
             </div>
             <div className="p-2.5 rounded-lg bg-[#151820] border border-[#252A34]">
@@ -359,6 +395,13 @@ export default function VideoPlayer({
               </span>
             </div>
           </div>
+
+          {blueprint.social_proof && (
+            <div className="p-2.5 rounded-lg bg-[#151820] border border-[#252A34] text-[11px]">
+              <span className="text-[#717888] block">Extracted Social Proof:</span>
+              <span className="font-mono text-white mt-0.5 block">{blueprint.social_proof}</span>
+            </div>
+          )}
         </div>
       )}
     </div>

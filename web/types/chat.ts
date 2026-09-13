@@ -3,6 +3,7 @@ export type PipelineStage =
   | 'extracting'
   | 'generating_script'
   | 'assembling_video'
+  | 'validating_video'
   | 'completed'
   | 'error';
 
@@ -11,7 +12,8 @@ export type StepId =
   | 'extracting_context'
   | 'generating_blueprint'
   | 'matching_media'
-  | 'compositing_video';
+  | 'compositing_video'
+  | 'validating_video';
 
 export interface PipelineStep {
   id: StepId;
@@ -30,6 +32,11 @@ export interface VideoBlueprint {
   audio_track: string;
   source_url?: string;
   summary?: string;
+  category?: string;
+  rationale?: string;
+  brand_color?: string;
+  og_title?: string;
+  social_proof?: string;
 }
 
 export interface ChatMessage {
@@ -46,6 +53,7 @@ export interface ChatMessage {
   error?: string;
   retryable?: boolean;
   isStreaming?: boolean;
+  rationale?: string;
 }
 
 export interface ChatApiResponse {
@@ -55,6 +63,7 @@ export interface ChatApiResponse {
   blueprint?: VideoBlueprint;
   videoUrl?: string;
   error?: string;
+  rationale?: string;
 }
 
 export interface StreamEvent {
@@ -68,6 +77,7 @@ export interface StreamEvent {
   videoUrl?: string;
   error?: string;
   retryable?: boolean;
+  rationale?: string;
 }
 
 export interface SavedVideo {
@@ -80,4 +90,5 @@ export interface SavedVideo {
   hookText: string;
   blueprint: VideoBlueprint;
   createdAt: string;
+  rationale?: string;
 }

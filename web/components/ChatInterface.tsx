@@ -30,6 +30,45 @@ export default function ChatInterface() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isHydratedRef = useRef(false);
+
+  const userKey = session?.user?.id || session?.user?.email || 'guest';
+  const storageKey = `reelforge_chat_${userKey}`;
+
+  // Restore chat history from localStorage without blocking initial render
+  useEffect(() => {
+    if (!isHydratedRef.current) {
+      isHydratedRef.current = true;
+      try {
+        const saved = localStorage.getItem(storageKey);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const sanitized: ChatMessage[] = parsed.map((m: ChatMessage) => ({
+              ...m,
+              isStreaming: false,
+            }));
+            setTimeout(() => {
+              setMessages(sanitized);
+            }, 0);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load persisted chat history:', e);
+      }
+    }
+  }, [storageKey]);
+
+  // Persist messages whenever they change
+  useEffect(() => {
+    if (messages.length > 0) {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(messages.slice(-30)));
+      } catch (e) {
+        console.warn('Failed to persist chat history:', e);
+      }
+    }
+  }, [messages, storageKey]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -153,6 +192,7 @@ export default function ChatInterface() {
                       detectedUrl: event.detectedUrl || msg.detectedUrl,
                       blueprint: event.blueprint || msg.blueprint,
                       videoUrl: event.videoUrl,
+                      rationale: event.rationale || event.blueprint?.rationale,
                       stage: 'completed',
                       isStreaming: false,
                     };
@@ -229,17 +269,23 @@ export default function ChatInterface() {
     const historicalMessage: ChatMessage = {
       id: `saved-${video.id}`,
       sender: 'assistant',
-      text: `🎬 Restored previously generated UGC marketing video for **${video.detectedUrl}**:`,
+      text: `🎬 Restored previously generated UGC marketing video for **${video.detectedUrl}**:
+
+💡 **Decision Rationale:** ${video.blueprint?.rationale || video.rationale || 'Selected tailored assets for this brand.'}`,
       detectedUrl: video.detectedUrl,
       blueprint: video.blueprint,
       videoUrl: video.videoUrl,
       createdAt: video.createdAt,
+      rationale: video.rationale || video.blueprint?.rationale,
     };
     setMessages((prev) => [...prev, historicalMessage]);
   };
 
   const resetChat = () => {
     setMessages([]);
+    try {
+      localStorage.removeItem(storageKey);
+    } catch {}
   };
 
   // If user is unauthenticated, show the dedicated branded Sign In screen
@@ -443,7 +489,7 @@ export default function ChatInterface() {
             </div>
             <div className="bg-[#13151B] border border-[#232733] rounded-2xl rounded-tl-xs px-4 py-3 text-xs text-[#8A909E] flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-[#FF6B00] animate-ping" />
-              <span>Initializing video assembly pipeline...</span>
+              <span>Analyzing product & assembling video pipeline...</span>
             </div>
           </div>
         )}
@@ -462,7 +508,7 @@ export default function ChatInterface() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Paste any product URL (e.g. 'Generate video for calai.app') or ask a question..."
+              placeholder="Paste any product URL (e.g. 'calai.app', 'linear.app') or ask a question..."
               disabled={loading}
               className="flex-1 bg-transparent text-sm text-white placeholder-[#555D6E] focus:outline-none disabled:opacity-50"
             />
