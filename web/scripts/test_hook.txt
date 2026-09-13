@@ -1,0 +1,2 @@
+Stop managing sprint issues manually.
+Linear compiles workflows 10x faster with 0 lag.

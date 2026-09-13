@@ -1,0 +1,7 @@
+➜  linear-ugc git:(main) bun run benchmark
+  compiling typescript v5.8.2 ...
+  ✔ Turbopack bundled 142 modules in 18ms
+  ✔ ffprobe verification: 720x1280 (9:16) passed
+  ✔ Audio sync latency: 0.04s [PASS]
+  🚀 Server listening on http://localhost:3000
+  [12:15:40] POST /api/chat/stream 200 (4.2ms)

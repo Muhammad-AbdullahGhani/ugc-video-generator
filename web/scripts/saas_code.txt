@@ -1,0 +1,22 @@
+// @linear/sdk v3.4 - Fast Sync Engine
+import { Engine, RealtimeClient } from '@linear/core';
+import { MetricsCollector } from '@linear/telemetry';
+
+export async function syncEngineeringWorkflow() {
+  const stream = new RealtimeClient({ latency: '12ms' });
+  const metrics = await MetricsCollector.getTelemetry();
+
+  console.log(`[Linear Engine] Active issues: ${metrics.count}`);
+  const compiler = await Engine.compileOptimized({
+    concurrency: 32,
+    autoMerge: true,
+    zeroConfig: true
+  });
+
+  return compiler.dispatchSprint();
+}
+
+// Continuous deployment pipeline
+Engine.on('workflow:sync', (event) => {
+  telemetry.logEvent('task_completed', { id: event.id });
+});

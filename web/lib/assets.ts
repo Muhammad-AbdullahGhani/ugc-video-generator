@@ -46,6 +46,15 @@ export function getAvailableAssets(): AvailableAssets {
   return { videos, audios };
 }
 
+export interface MatchedAssets {
+  backgroundVideo: string;
+  audioTrack: string;
+  defaultGif: string;
+  footageDescription: string;
+  audioDescription: string;
+  rationale: string;
+}
+
 /**
  * Category-aware asset matching:
  * Matches background video clip, trending audio soundtrack, and preferred meme GIF
@@ -54,11 +63,13 @@ export function getAvailableAssets(): AvailableAssets {
 export function matchAssetsByCategory(
   category: ProductCategory,
   available: AvailableAssets
-): { backgroundVideo: string; audioTrack: string; defaultGif: string; rationale: string } {
+): MatchedAssets {
   const { videos, audios } = available;
 
-  const v1 = videos.find((v) => v.includes('15283135')) || videos[0] || 'background.mp4';
-  const v2 = videos.find((v) => v.includes('15283174')) || videos[1] || videos[0] || 'background.mp4';
+  const ideVideo = videos.find((v) => v.includes('saas_dev_ide')) || 'saas_dev_ide.mp4';
+  const fitnessVideo = videos.find((v) => v.includes('fitness_workout')) || 'fitness_workout.mp4';
+  const foodVideo = videos.find((v) => v.includes('food_culinary')) || 'food_culinary.mp4';
+  const techVideo = videos.find((v) => v.includes('tech_abstract')) || 'tech_abstract.mp4';
 
   const hiphop = audios.find((a) => a.includes('hip-hop')) || audios[0] || 'track.mp3';
   const driving = audios.find((a) => a.includes('driving-ambition')) || audios[0] || 'track.mp3';
@@ -67,40 +78,50 @@ export function matchAssetsByCategory(
   switch (category) {
     case 'fitness':
       return {
-        backgroundVideo: v2,
+        backgroundVideo: fitnessVideo,
         audioTrack: hiphop,
-        defaultGif: 'mind blown',
-        rationale: 'Used a high-energy kinetic vertical clip + upbeat beat since this is a fitness/wellness product.',
+        defaultGif: 'mind-blown',
+        footageDescription: 'high-energy fitness telemetry reel with active cardio pacing HUD',
+        audioDescription: 'upbeat rhythmic hip-hop beat',
+        rationale: 'Used an active fitness telemetry reel with live cardio HUD + upbeat rhythmic beat + reaction meme tailored for calorie/health tracking.',
       };
     case 'saas_dev':
     case 'productivity':
       return {
-        backgroundVideo: v1,
+        backgroundVideo: ideVideo,
         audioTrack: driving,
-        defaultGif: 'mind blown',
-        rationale: 'Used a sleek focused background reel + driving electronic synth for this tech/SaaS workflow.',
+        defaultGif: 'mind-blown',
+        footageDescription: 'dark-mode IDE screen recording showing live scrolling TypeScript code & terminal build logs',
+        audioDescription: 'driving electronic synth soundtrack',
+        rationale: 'Used an active dark-mode IDE screen recording with live TypeScript compilation logs + driving synth audio + reaction meme tailored for this developer workflow.',
       };
     case 'food_beverage':
     case 'ecommerce':
       return {
-        backgroundVideo: v2,
+        backgroundVideo: foodVideo,
         audioTrack: acoustic,
         defaultGif: 'celebration',
-        rationale: 'Used a bright aesthetic vertical clip + uplifting audio tailored for modern DTC/consumer brand appeal.',
+        footageDescription: 'aesthetic culinary studio reel with botanical nutrition breakdown & recipe badges',
+        audioDescription: 'bright acoustic soundtrack',
+        rationale: 'Used an aesthetic culinary studio reel with macro nutrition breakdown + uplifting acoustic soundtrack + celebration meme tailored for modern beverage/DTC appeal.',
       };
     case 'fintech':
       return {
-        backgroundVideo: v1,
+        backgroundVideo: techVideo,
         audioTrack: hiphop,
         defaultGif: 'money',
-        rationale: 'Used an impactful motion reel + punchy soundtrack and money meme visual for this financial/conversion hook.',
+        footageDescription: 'high-velocity fintech metrics reel with real-time revenue graphs & conversion telemetry',
+        audioDescription: 'punchy hip-hop beat',
+        rationale: 'Used a high-velocity revenue telemetry reel + punchy soundtrack + money meme visual for this financial/conversion hook.',
       };
     default:
       return {
-        backgroundVideo: v1,
+        backgroundVideo: ideVideo,
         audioTrack: driving,
         defaultGif: 'shocked',
-        rationale: 'Selected dynamic vertical background + trending soundtrack matching this product positioning.',
+        footageDescription: 'kinetic workflow screen recording with live telemetry',
+        audioDescription: 'trending synth soundtrack',
+        rationale: 'Selected an active workflow screen recording + trending synth soundtrack matching this product positioning.',
       };
   }
 }

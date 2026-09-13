@@ -136,7 +136,10 @@ Return a strict JSON object matching this schema:
   const audio_track = matched.audioTrack;
   const gif_search_term = parsed.gif_search_term || matched.defaultGif;
   const brand_color = parsed.brand_color || metadata?.themeColor || '#FF6B00';
-  const rationale = parsed.rationale || matched.rationale;
+  
+  // Construct bulletproof factual rationale that strictly describes the actual assets chosen
+  const productContext = parsed.summary || metadata?.ogTitle || sourceUrl;
+  const rationale = `Used ${matched.footageDescription} + ${matched.audioDescription} + '${gif_search_term}' reaction meme tailored for ${productContext}.`;
 
   return {
     hook_text: parsed.hook_text || `Stop struggling with manual workflows — discover ${metadata?.ogTitle || sourceUrl}.`,

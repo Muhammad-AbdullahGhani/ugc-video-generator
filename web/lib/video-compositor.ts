@@ -30,7 +30,7 @@ export interface RenderResult {
   validation?: VideoValidation;
 }
 
-function wrapText(text: string, maxLineLength = 28): string {
+function wrapText(text: string, maxLineLength = 22): string {
   const words = text.replace(/\n/g, ' ').split(' ');
   const lines: string[] = [];
   let currentLine = '';
@@ -219,14 +219,26 @@ export async function renderUgcVideo(
 
   // Format brand accent color for FFmpeg drawtext box border (e.g. #FF6B00 -> 0xFF6B00)
   const cleanColor = brandColor.replace(/^#/, '');
-  const ffmpegBorderColor = cleanColor.length === 6 ? `0x${cleanColor}` : '0xFF6B00';
+  let hexColor = cleanColor.length === 6 ? cleanColor : 'FF6B00';
+  const r = parseInt(hexColor.slice(0, 2), 16) || 0;
+  const g = parseInt(hexColor.slice(2, 4), 16) || 0;
+  const b = parseInt(hexColor.slice(4, 6), 16) || 0;
+  const luminance = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
+  if (luminance < 0.25) {
+    hexColor = 'FF6B00'; // High contrast Electric Amber fallback
+  }
+  const ffmpegBorderColor = `0x${hexColor}`;
 
-  // Build filter complex for crisp, fast-rendering 720x1280 vertical video with brand highlight border
+  // Build filter complex for crisp, fast-rendering 720x1280 vertical video with clear 4-layer separation:
+  // Layer 1: Background Video (full 720x1280 frame)
+  // Layer 2: Reaction GIF framed as a floating sticker card with brand border (width 320px, at y=640)
+  // Layer 3: Kinetic Text Box with brand accent border and legible dark backing (at y=200)
+  // Layer 4: Beat-synced soundtrack fading out cleanly
   const filterComplex = [
     `[0:v]trim=duration=${durationSeconds},scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setpts=PTS-STARTPTS[bg]`,
-    `[1:v]scale=460:-1[gif]`,
-    `[bg][gif]overlay=(W-w)/2:(H-h)/2+50:shortest=1[comp1]`,
-    `[comp1]drawtext=textfile='${escapedTextPath}':fontfile='${escapedFontPath}':fontsize=38:fontcolor=white:borderw=4:bordercolor=${ffmpegBorderColor}:box=1:boxcolor=black@0.72:boxborderw=14:line_spacing=12:x=(w-text_w)/2:y=(h-text_h)/3-70[v]`,
+    `[1:v]scale=320:-2,pad=328:ih+8:4:4:color=${ffmpegBorderColor}[gif_framed]`,
+    `[bg][gif_framed]overlay=(W-w)/2:640:shortest=1[comp1]`,
+    `[comp1]drawtext=textfile='${escapedTextPath}':fontfile='${escapedFontPath}':fontsize=34:fontcolor=white:borderw=3:bordercolor=${ffmpegBorderColor}:box=1:boxcolor=black@0.82:boxborderw=14:line_spacing=12:x=(w-text_w)/2:y=200[v]`,
     `[2:a]afade=t=out:st=${durationSeconds - 1}:d=1[a]`,
   ].join(';');
 

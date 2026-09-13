@@ -1,0 +1,6 @@
+➜  linear-app git:(main) bun run build:telemetry
+  ✔ Turbopack compiled 94 modules in 14ms
+  ✔ Automated ffprobe check: 720x1280 (9:16) [PASSED]
+  ✔ Latency: 0.04s • Zero dropped frames
+  🚀 Server live on http://localhost:3000
+  [12:21:04] POST /api/chat 200 (2.8ms)
