@@ -1,31 +1,108 @@
 @import "tailwindcss";
 
-:root {
-  --background: #121214;
-  --foreground: #e4e4e7;
-  --card-bg: #18181b;
-  --border-color: #27272a;
+@layer base {
+  :root {
+    --font-display: var(--font-space-grotesk), sans-serif;
+    --font-sans: var(--font-jakarta), -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: var(--font-jetbrains), monospace;
+
+    /* Custom Color Tokens: Studio Charcoal & Radiant Amber (Zero Teal/Blue/Purple) */
+    --bg-canvas: #090A0C;
+    --bg-surface: #111317;
+    --bg-surface-card: #161920;
+    --bg-surface-elevated: #1D222B;
+    --border-subtle: #252A34;
+    --border-strong: #363D4B;
+
+    /* Signature Accent: Electric Studio Amber */
+    --brand-amber: #FF6B00;
+    --brand-amber-light: #FF8833;
+    --brand-amber-dark: #D45500;
+    --brand-amber-glow: rgba(255, 107, 0, 0.18);
+    --brand-amber-muted: rgba(255, 107, 0, 0.08);
+    --brand-amber-border: rgba(255, 107, 0, 0.28);
+
+    /* Radii Tokens */
+    --radius-xs: 6px;
+    --radius-sm: 10px;
+    --radius-md: 14px;
+    --radius-lg: 20px;
+    --radius-xl: 28px;
+  }
+
+  body {
+    background-color: var(--bg-canvas);
+    color: #F3F4F6;
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4, .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
+  code, pre, .font-mono {
+    font-family: var(--font-mono);
+  }
 }
 
-body {
-  background-color: var(--background);
-  color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
-    Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
-}
-
-/* Custom subtle scrollbar */
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #27272a;
+  background: #252A34;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
+  background: #FF6B00;
+}
+
+/* Micro-interaction Animations */
+@keyframes messageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(255, 107, 0, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 16px 2px rgba(255, 107, 0, 0.25);
+  }
+}
+
+@keyframes stepPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(0.95);
+  }
+}
+
+.animate-message-enter {
+  animation: messageEnter 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2.5s infinite ease-in-out;
+}
+
+.animate-step-pulse {
+  animation: stepPulse 1.5s infinite ease-in-out;
 }

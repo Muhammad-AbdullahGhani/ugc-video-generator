@@ -6,6 +6,23 @@ export type PipelineStage =
   | 'completed'
   | 'error';
 
+export type StepId =
+  | 'reading_url'
+  | 'extracting_context'
+  | 'generating_blueprint'
+  | 'matching_media'
+  | 'compositing_video';
+
+export interface PipelineStep {
+  id: StepId;
+  label: string;
+  description: string;
+  status: 'pending' | 'active' | 'completed' | 'error';
+  startedAt?: number;
+  completedAt?: number;
+  error?: string;
+}
+
 export interface VideoBlueprint {
   hook_text: string;
   gif_search_term: string;
@@ -22,9 +39,13 @@ export interface ChatMessage {
   createdAt: string;
   detectedUrl?: string;
   stage?: PipelineStage;
+  steps?: PipelineStep[];
+  activeStepId?: StepId;
   blueprint?: VideoBlueprint;
   videoUrl?: string;
   error?: string;
+  retryable?: boolean;
+  isStreaming?: boolean;
 }
 
 export interface ChatApiResponse {
@@ -34,4 +55,29 @@ export interface ChatApiResponse {
   blueprint?: VideoBlueprint;
   videoUrl?: string;
   error?: string;
+}
+
+export interface StreamEvent {
+  type: 'step' | 'chat' | 'chat_thinking' | 'complete' | 'error';
+  stepId?: StepId;
+  step?: PipelineStep;
+  message?: string;
+  reply?: string;
+  detectedUrl?: string;
+  blueprint?: VideoBlueprint;
+  videoUrl?: string;
+  error?: string;
+  retryable?: boolean;
+}
+
+export interface SavedVideo {
+  id: string;
+  userId: string;
+  userEmail: string;
+  userName?: string;
+  videoUrl: string;
+  detectedUrl: string;
+  hookText: string;
+  blueprint: VideoBlueprint;
+  createdAt: string;
 }

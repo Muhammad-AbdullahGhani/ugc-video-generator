@@ -1,154 +1,211 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useSession, signOut } from 'next-auth/react';
+import Image from 'next/image';
 import {
   Send,
-  Sparkles,
   Film,
   ExternalLink,
-  Bot,
   User,
   Loader2,
   Globe,
   RefreshCw,
-  Download,
+  LogOut,
+  Layers,
+  AlertCircle,
 } from 'lucide-react';
-import { ChatMessage, ChatApiResponse, PipelineStage } from '@/types/chat';
-
-const STARTER_PROMPTS = [
-  'Hi there!',
-  'Here is my site: calai.app',
-  'Generate a video for linear.app',
-  'How does this work?',
-];
-
-async function resolvePlayableVideoUrl(url?: string): Promise<string | undefined> {
-  if (!url) return undefined;
-  if (url.startsWith('data:video/mp4;base64,')) {
-    try {
-      const res = await fetch(url);
-      const blob = await res.blob();
-      return URL.createObjectURL(blob);
-    } catch (err) {
-      console.warn('[Video] Native fetch data-to-blob failed:', err);
-      return url;
-    }
-  }
-  return url;
-}
+import { ChatMessage, StreamEvent, SavedVideo } from '@/types/chat';
+import SignInScreen from '@/components/SignInScreen';
+import VideoPlayer from '@/components/VideoPlayer';
+import PipelineTracker from '@/components/PipelineTracker';
+import EmptyState from '@/components/EmptyState';
+import UserVideosDrawer from '@/components/UserVideosDrawer';
 
 export default function ChatInterface() {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'welcome',
-      sender: 'assistant',
-      text: "Welcome to the UGC Video Generator. Paste any product or startup URL (e.g. `calai.app`), and I'll extract its context, write a viral hook, and generate a 5–10s UGC marketing video.",
-      createdAt: new Date().toISOString(),
-    },
-  ]);
+  const { data: session, status } = useSession();
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [downloading, setDownloading] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, loading]);
+  }, [messages, loading, scrollToBottom]);
 
-  const handleDownload = async (url: string, filename = 'ugc-marketing-video.mp4') => {
-    try {
-      setDownloading(true);
-      // If it's already a blob URL or data URL, download immediately
-      if (url.startsWith('blob:') || url.startsWith('data:')) {
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        return;
-      }
+  const sendMessage = useCallback(
+    async (textToSend?: string) => {
+      const text = (textToSend || input).trim();
+      if (!text || loading) return;
 
-      // For remote URLs, fetch blob to ensure proper attachment download across all browsers
-      const res = await fetch(url);
-      const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
-    } catch (err) {
-      console.warn('Direct blob download failed, opening in new tab:', err);
-      window.open(url, '_blank');
-    } finally {
-      setDownloading(false);
-    }
-  };
+      const randomSuffix = Math.random().toString(36).substring(2, 9);
+      const userMessageId = `user-${randomSuffix}`;
+      const assistantMessageId = `asst-${randomSuffix}`;
 
-  const sendMessage = async (textToSend?: string) => {
-    const text = (textToSend || input).trim();
-    if (!text || loading) return;
-
-    const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
-      sender: 'user',
-      text,
-      createdAt: new Date().toISOString(),
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    if (!textToSend) {
-      setInput('');
-    }
-    setLoading(true);
-
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          history: messages.slice(-6).map((m) => ({ sender: m.sender, text: m.text })),
-        }),
-      });
-
-      const data: ChatApiResponse = await res.json();
-      const playableVideoUrl = await resolvePlayableVideoUrl(data.videoUrl);
+      const userMessage: ChatMessage = {
+        id: userMessageId,
+        sender: 'user',
+        text,
+        createdAt: new Date().toISOString(),
+      };
 
       const assistantMessage: ChatMessage = {
-        id: `assistant-${Date.now()}`,
+        id: assistantMessageId,
         sender: 'assistant',
-        text: data.reply || 'No response received.',
-        detectedUrl: data.detectedUrl,
-        stage: data.stage,
-        videoUrl: playableVideoUrl,
-        error: data.error,
+        text: '',
         createdAt: new Date().toISOString(),
+        steps: [],
+        isStreaming: true,
       };
 
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch (err: unknown) {
-      const errorMessage: ChatMessage = {
-        id: `assistant-${Date.now()}`,
-        sender: 'assistant',
-        text: 'Sorry, an unexpected error occurred while communicating with the server.',
-        error: err instanceof Error ? err.message : 'Network error',
-        createdAt: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setLoading(false);
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
-  };
+      setMessages((prev) => [...prev, userMessage, assistantMessage]);
+      if (!textToSend) {
+        setInput('');
+      }
+      setLoading(true);
+
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            history: messages.slice(-6).map((m) => ({ sender: m.sender, text: m.text })),
+          }),
+        });
+
+        if (!response.ok && !response.body) {
+          throw new Error(`Server returned HTTP ${response.status}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error('Streaming not supported or failed to initialize.');
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) continue;
+
+            try {
+              const rawJson = trimmed.replace(/^data:\s*/, '');
+              const event: StreamEvent = JSON.parse(rawJson);
+
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  if (msg.id !== assistantMessageId) return msg;
+
+                  if (event.type === 'step' && event.step) {
+                    const existingSteps = [...(msg.steps || [])];
+                    const idx = existingSteps.findIndex((s) => s.id === event.step!.id);
+                    if (idx >= 0) {
+                      existingSteps[idx] = event.step;
+                    } else {
+                      existingSteps.push(event.step);
+                    }
+
+                    return {
+                      ...msg,
+                      steps: existingSteps,
+                      activeStepId:
+                        event.step.status === 'active' ? event.step.id : msg.activeStepId,
+                      detectedUrl: event.detectedUrl || msg.detectedUrl,
+                      blueprint: event.blueprint || msg.blueprint,
+                    };
+                  }
+
+                  if (event.type === 'chat_thinking') {
+                    return {
+                      ...msg,
+                      text: event.message || 'Formulating reply...',
+                    };
+                  }
+
+                  if (event.type === 'chat') {
+                    return {
+                      ...msg,
+                      text: event.reply || '',
+                      isStreaming: false,
+                    };
+                  }
+
+                  if (event.type === 'complete') {
+                    return {
+                      ...msg,
+                      text: event.reply || msg.text,
+                      detectedUrl: event.detectedUrl || msg.detectedUrl,
+                      blueprint: event.blueprint || msg.blueprint,
+                      videoUrl: event.videoUrl,
+                      stage: 'completed',
+                      isStreaming: false,
+                    };
+                  }
+
+                  if (event.type === 'error') {
+                    const updatedSteps = (msg.steps || []).map((s) =>
+                      s.id === event.stepId
+                        ? { ...s, status: 'error' as const, error: event.error }
+                        : s
+                    );
+
+                    return {
+                      ...msg,
+                      error:
+                        event.error || event.message || 'An error occurred during processing.',
+                      retryable: event.retryable ?? true,
+                      steps: updatedSteps,
+                      detectedUrl: event.detectedUrl || msg.detectedUrl,
+                      isStreaming: false,
+                    };
+                  }
+
+                  return msg;
+                })
+              );
+            } catch (parseErr) {
+              console.warn('[Stream] Line parse error:', parseErr, line);
+            }
+          }
+        }
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : 'Network error';
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? {
+                  ...msg,
+                  error: errorMsg,
+                  retryable: true,
+                  isStreaming: false,
+                  text: 'An error occurred while communicating with the video generation engine.',
+                }
+              : msg
+          )
+        );
+      } finally {
+        setLoading(false);
+        setTimeout(() => inputRef.current?.focus(), 60);
+      }
+    },
+    [input, loading, messages]
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -157,232 +214,236 @@ export default function ChatInterface() {
     }
   };
 
-  const resetChat = () => {
-    setMessages([
-      {
-        id: 'welcome',
-        sender: 'assistant',
-        text: "Chat reset. Share a product or website URL (like `calai.app`), and I'll generate a UGC video for it.",
-        createdAt: new Date().toISOString(),
-      },
-    ]);
+  const handleRetry = (promptText?: string) => {
+    if (promptText) {
+      sendMessage(promptText);
+    }
   };
 
+  const handleEditUrl = (url: string) => {
+    setInput(url);
+    inputRef.current?.focus();
+  };
+
+  const handleSelectSavedVideo = (video: SavedVideo) => {
+    const historicalMessage: ChatMessage = {
+      id: `saved-${video.id}`,
+      sender: 'assistant',
+      text: `🎬 Restored previously generated UGC marketing video for **${video.detectedUrl}**:`,
+      detectedUrl: video.detectedUrl,
+      blueprint: video.blueprint,
+      videoUrl: video.videoUrl,
+      createdAt: video.createdAt,
+    };
+    setMessages((prev) => [...prev, historicalMessage]);
+  };
+
+  const resetChat = () => {
+    setMessages([]);
+  };
+
+  // If user is unauthenticated, show the dedicated branded Sign In screen
+  if (status === 'unauthenticated') {
+    return <SignInScreen />;
+  }
+
+  // Loading session state
+  if (status === 'loading') {
+    return (
+      <div className="h-screen bg-[#090A0C] flex flex-col items-center justify-center text-zinc-300">
+        <div className="w-10 h-10 rounded-xl bg-[#FF6B00]/15 border border-[#FF6B00]/30 flex items-center justify-center text-[#FF8533] mb-3 animate-pulse">
+          <Film className="w-5 h-5" />
+        </div>
+        <p className="text-xs text-[#8A909E] font-mono">Initializing Studio Session...</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col h-screen bg-[#121214] text-zinc-200">
+    <div className="flex flex-col h-screen bg-[#090A0C] text-[#F3F4F6] font-sans overflow-hidden">
       {/* Top Navbar */}
-      <header className="flex-none border-b border-zinc-800/80 bg-[#161619]/90 backdrop-blur-md px-4 sm:px-6 py-3.5 flex items-center justify-between">
+      <header className="flex-none border-b border-[#222733] bg-[#0E1015]/90 backdrop-blur-md px-4 sm:px-6 py-3.5 flex items-center justify-between z-20">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700/70 flex items-center justify-center text-zinc-100">
-            <Film className="w-4 h-4 text-emerald-400" />
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#FF6B00] to-[#D95300] flex items-center justify-center text-white shadow-md shadow-[#FF6B00]/20">
+            <Film className="w-4 h-4 stroke-[2.2]" />
           </div>
+
           <div>
-            <h1 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-              UGC Video Generator
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950/60 text-emerald-400 border border-emerald-800/50">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 animate-pulse" />
-                Pipeline Active
+            <div className="flex items-center gap-2">
+              <h1 className="font-display text-sm font-bold text-white tracking-tight">
+                REELFORGE
+              </h1>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-[#FF6B00]/15 text-[#FF8533] border border-[#FF6B00]/30">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B00] mr-1.5 animate-pulse" />
+                UGC Studio Active
               </span>
-            </h1>
-            <p className="text-xs text-zinc-500">Zero-cost AI marketing video assembler</p>
+            </div>
+            <p className="text-[11px] text-[#717888] hidden sm:block">
+              AI Marketing Video Engine • 9:16 Vertical Export
+            </p>
           </div>
         </div>
 
-        <button
-          onClick={resetChat}
-          className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 px-2.5 py-1.5 rounded-md hover:bg-zinc-800/60 border border-zinc-800 transition"
-          title="Reset conversation"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Reset</span>
-        </button>
+        <div className="flex items-center gap-2.5">
+          {/* User Saved Videos Drawer Button */}
+          <button
+            onClick={() => setIsDrawerOpen(true)}
+            className="flex items-center gap-1.5 text-xs text-[#D1D5DB] hover:text-white px-3 py-1.5 rounded-lg bg-[#161922] hover:bg-[#1E2330] border border-[#262C3B] transition cursor-pointer"
+            title="View saved generations"
+          >
+            <Layers className="w-3.5 h-3.5 text-[#FF8533]" />
+            <span className="hidden sm:inline">My Videos</span>
+          </button>
+
+          {/* Reset Conversation */}
+          <button
+            onClick={resetChat}
+            className="flex items-center gap-1.5 text-xs text-[#8A909E] hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-[#161922] border border-[#222733] transition cursor-pointer"
+            title="Reset conversation"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Reset</span>
+          </button>
+
+          {/* User Account / Sign Out */}
+          <div className="flex items-center gap-2 pl-2 border-l border-[#222733]">
+            {session?.user?.image ? (
+              <Image
+                src={session.user.image}
+                alt={session.user.name || 'User'}
+                width={28}
+                height={28}
+                unoptimized
+                className="w-7 h-7 rounded-full border border-[#FF6B00]/40 object-cover"
+              />
+            ) : (
+              <div className="w-7 h-7 rounded-full bg-[#1C202B] border border-[#2D3444] flex items-center justify-center text-xs font-semibold text-[#FF8533]">
+                {session?.user?.name ? session.user.name.charAt(0).toUpperCase() : 'U'}
+              </div>
+            )}
+
+            <button
+              onClick={() => signOut()}
+              className="p-1.5 rounded-lg hover:bg-[#1E222D] text-[#8A909E] hover:text-red-400 transition cursor-pointer"
+              title="Sign out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
       </header>
 
-      {/* Message Thread */}
-      <main className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-5 max-w-3xl w-full mx-auto">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex items-start gap-3 ${
-              msg.sender === 'user' ? 'justify-end' : 'justify-start'
-            }`}
-          >
-            {msg.sender === 'assistant' && (
-              <div className="flex-none w-8 h-8 rounded-full bg-zinc-800/90 border border-zinc-700/50 flex items-center justify-center text-zinc-300">
-                <Bot className="w-4 h-4 text-zinc-300" />
-              </div>
-            )}
-
+      {/* Main Chat Thread Area */}
+      <main className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6 max-w-3xl w-full mx-auto">
+        {messages.length === 0 ? (
+          <EmptyState onSelectPrompt={sendMessage} disabled={loading} />
+        ) : (
+          messages.map((msg) => (
             <div
-              className={`max-w-[85%] sm:max-w-xl rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                msg.sender === 'user'
-                  ? 'bg-zinc-800 text-zinc-100 border border-zinc-700/60 rounded-tr-sm shadow-sm'
-                  : 'bg-zinc-900/90 text-zinc-200 border border-zinc-800/90 rounded-tl-sm shadow-sm'
+              key={msg.id}
+              className={`flex items-start gap-3 animate-message-enter ${
+                msg.sender === 'user' ? 'justify-end' : 'justify-start'
               }`}
             >
-              <div className="whitespace-pre-wrap">{msg.text}</div>
-
-              {/* Detected URL Badge */}
-              {msg.detectedUrl && (
-                <div className="mt-3 pt-3 border-t border-zinc-800/80 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-xs text-zinc-300 font-mono overflow-hidden">
-                    <Globe className="w-3.5 h-3.5 text-emerald-400 flex-none" />
-                    <span className="truncate">{msg.detectedUrl}</span>
-                  </div>
-                  <a
-                    href={msg.detectedUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-none inline-flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-200 transition"
-                  >
-                    Visit <ExternalLink className="w-3 h-3" />
-                  </a>
+              {msg.sender === 'assistant' && (
+                <div className="flex-none w-8 h-8 rounded-xl bg-gradient-to-br from-[#1B1E28] to-[#12141A] border border-[#282F40] flex items-center justify-center text-[#FF8533] shadow-sm">
+                  <Film className="w-4 h-4 stroke-[2]" />
                 </div>
               )}
 
-              {/* Pipeline Stage Status Card */}
-              {msg.stage && (
-                <div className="mt-3 p-3 rounded-lg bg-zinc-950/70 border border-zinc-800/80 text-xs">
-                  <div className="font-medium text-zinc-300 mb-2 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                    UGC Pipeline State
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-[11px]">
-                    <div
-                      className={`p-1.5 rounded border text-center ${
-                        msg.stage === 'extracting' || msg.blueprint
-                          ? 'bg-emerald-950/40 border-emerald-700/60 text-emerald-300 font-medium'
-                          : 'bg-zinc-900/40 border-zinc-800 text-zinc-500'
-                      }`}
+              <div
+                className={`max-w-[88%] sm:max-w-xl rounded-2xl p-4 text-sm leading-relaxed transition-all shadow-md ${
+                  msg.sender === 'user'
+                    ? 'bg-[#1C202B] text-white border border-[#2E3649] rounded-tr-xs'
+                    : 'bg-[#13151B] text-[#E5E7EB] border border-[#232733] rounded-tl-xs'
+                }`}
+              >
+                {/* Main text message */}
+                {msg.text && (
+                  <div className="whitespace-pre-wrap font-sans text-sm">{msg.text}</div>
+                )}
+
+                {/* Detected URL Link Badge */}
+                {msg.detectedUrl && (
+                  <div className="mt-3 pt-3 border-t border-[#232733] flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-xs text-[#D1D5DB] font-mono overflow-hidden">
+                      <Globe className="w-3.5 h-3.5 text-[#FF8533] flex-none" />
+                      <span className="truncate">{msg.detectedUrl}</span>
+                    </div>
+                    <a
+                      href={msg.detectedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-none inline-flex items-center gap-1 text-[11px] text-[#FF8533] hover:underline"
                     >
-                      ✓ 1. Jina Scrape
-                    </div>
-                    <div
-                      className={`p-1.5 rounded border text-center ${
-                        msg.blueprint || msg.stage === 'generating_script'
-                          ? 'bg-emerald-950/40 border-emerald-700/60 text-emerald-300 font-medium'
-                          : 'bg-zinc-900/40 border-zinc-800 text-zinc-500'
-                      }`}
-                    >
-                      {msg.blueprint ? '✓ 2. Gemini Brain' : '2. Gemini Brain'}
-                    </div>
-                    <div
-                      className={`p-1.5 rounded border text-center ${
-                        msg.stage === 'assembling_video'
-                          ? 'bg-emerald-950/40 border-emerald-700/60 text-emerald-300 font-medium'
-                          : msg.stage === 'completed'
-                          ? 'bg-emerald-950/40 border-emerald-700/60 text-emerald-300 font-medium'
-                          : 'bg-zinc-900/40 border-zinc-800 text-zinc-500'
-                      }`}
-                    >
-                      3. FFmpeg Video
-                    </div>
+                      Visit site <ExternalLink className="w-3 h-3" />
+                    </a>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* UGC Video Blueprint Card */}
-              {msg.blueprint && (
-                <div className="mt-3 p-3.5 rounded-xl bg-zinc-950/85 border border-zinc-800 text-xs space-y-2.5 shadow-md">
-                  <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
-                    <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" /> UGC Video Blueprint
-                    </span>
-                    <span className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">
-                      Gemini Extracted
-                    </span>
-                  </div>
-
-                  <div>
-                    <div className="text-[11px] text-zinc-400 font-medium mb-1">Viral Hook Overlay:</div>
-                    <div className="p-2.5 rounded-lg bg-zinc-900/90 border border-zinc-800 text-zinc-100 font-medium text-xs">
-                      &ldquo;{msg.blueprint.hook_text}&rdquo;
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
-                    <div className="p-2 rounded-lg bg-zinc-900/60 border border-zinc-800/80">
-                      <div className="text-[10px] text-zinc-500 font-medium">Meme GIF Search</div>
-                      <div className="text-zinc-200 font-mono text-[11px] truncate mt-0.5">
-                        {msg.blueprint.gif_search_term}
-                      </div>
-                    </div>
-                    <div className="p-2 rounded-lg bg-zinc-900/60 border border-zinc-800/80">
-                      <div className="text-[10px] text-zinc-500 font-medium">Background Video</div>
-                      <div className="text-zinc-200 font-mono text-[11px] truncate mt-0.5">
-                        {msg.blueprint.background_video}
-                      </div>
-                    </div>
-                    <div className="p-2 rounded-lg bg-zinc-900/60 border border-zinc-800/80">
-                      <div className="text-[10px] text-zinc-500 font-medium">Audio Track</div>
-                      <div className="text-zinc-200 font-mono text-[11px] truncate mt-0.5">
-                        {msg.blueprint.audio_track}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Video Player Preview (when videoUrl is ready) */}
-              {msg.videoUrl && (
-                <div className="mt-3 p-3.5 rounded-xl bg-zinc-950/90 border border-zinc-800 space-y-2.5 shadow-lg">
-                  <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
-                    <span className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
-                      <Film className="w-3.5 h-3.5 text-emerald-400" /> Rendered UGC Video (9:16)
-                    </span>
-                    <span className="text-[10px] text-emerald-400 font-mono bg-emerald-950/60 border border-emerald-800/50 px-2 py-0.5 rounded-full">
-                      ✓ Ready
-                    </span>
-                  </div>
-
-                  <div className="flex justify-center bg-black/60 rounded-lg p-2 border border-zinc-800/80">
-                    <video
-                      src={msg.videoUrl}
-                      controls
-                      playsInline
-                      className="rounded-md max-h-96 w-auto aspect-[9/16] bg-black shadow-md"
+                {/* Streaming Intermediate Status Steps Pipeline */}
+                {((msg.steps && msg.steps.length > 0) || msg.isStreaming) && (
+                  <div className="mt-3.5">
+                    <PipelineTracker
+                      steps={msg.steps || []}
+                      activeStepId={msg.activeStepId}
+                      detectedUrl={msg.detectedUrl}
+                      error={msg.error}
+                      onRetry={() => handleRetry(msg.detectedUrl || msg.text)}
+                      onEditUrl={handleEditUrl}
                     />
                   </div>
+                )}
 
-                  <div className="flex justify-between items-center pt-1">
-                    <span className="text-[11px] text-zinc-500 font-mono">720x1280 (9:16) • 30fps</span>
-                    <button
-                      onClick={() => handleDownload(msg.videoUrl!)}
-                      disabled={downloading}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs shadow transition disabled:opacity-50 cursor-pointer"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      {downloading ? 'Downloading...' : 'Download MP4'}
-                    </button>
+                {/* Real Video Player Component (Rendered once videoUrl is available) */}
+                {msg.videoUrl && (
+                  <div className="mt-4">
+                    <VideoPlayer
+                      videoUrl={msg.videoUrl}
+                      detectedUrl={msg.detectedUrl}
+                      blueprint={msg.blueprint}
+                      autoPlay={false}
+                    />
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Error Callout */}
-              {msg.error && (
-                <div className="mt-2 text-xs text-red-400 bg-red-950/30 border border-red-900/50 rounded p-2">
-                  {msg.error}
-                </div>
-              )}
-            </div>
-
-            {msg.sender === 'user' && (
-              <div className="flex-none w-8 h-8 rounded-full bg-zinc-700/80 border border-zinc-600/50 flex items-center justify-center text-zinc-200">
-                <User className="w-4 h-4 text-zinc-200" />
+                {/* Error Banner when no pipeline tracker is present */}
+                {msg.error && (!msg.steps || msg.steps.length === 0) && (
+                  <div className="mt-3 p-3 rounded-xl bg-red-950/40 border border-red-800/50 text-xs text-red-300 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-400 flex-none mt-0.5" />
+                    <div className="flex-1">
+                      <span>{msg.error}</span>
+                      {msg.retryable && (
+                        <button
+                          onClick={() => handleRetry(msg.detectedUrl || msg.text)}
+                          className="mt-2 block px-3 py-1 rounded bg-[#FF6B00] hover:bg-[#FF8533] text-white font-medium text-xs cursor-pointer shadow"
+                        >
+                          Retry Generation
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        ))}
 
-        {/* Loading Indicator */}
-        {loading && (
-          <div className="flex items-start gap-3 justify-start">
-            <div className="w-8 h-8 rounded-full bg-zinc-800/90 border border-zinc-700/50 flex items-center justify-center text-zinc-300">
-              <Bot className="w-4 h-4 text-zinc-300" />
+              {msg.sender === 'user' && (
+                <div className="flex-none w-8 h-8 rounded-xl bg-[#262C3B] border border-[#353D52] flex items-center justify-center text-white shadow-sm">
+                  <User className="w-4 h-4" />
+                </div>
+              )}
             </div>
-            <div className="bg-zinc-900/90 border border-zinc-800/90 rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-zinc-400 flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
-              <span>Analyzing message...</span>
+          ))
+        )}
+
+        {/* Typing indicator when assistant is preparing a response */}
+        {loading && messages.length > 0 && messages[messages.length - 1]?.sender === 'user' && (
+          <div className="flex items-start gap-3 justify-start animate-message-enter">
+            <div className="w-8 h-8 rounded-xl bg-[#1B1E28] border border-[#282F40] flex items-center justify-center text-[#FF8533]">
+              <Film className="w-4 h-4" />
+            </div>
+            <div className="bg-[#13151B] border border-[#232733] rounded-2xl rounded-tl-xs px-4 py-3 text-xs text-[#8A909E] flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#FF6B00] animate-ping" />
+              <span>Initializing video assembly pipeline...</span>
             </div>
           </div>
         )}
@@ -391,50 +452,48 @@ export default function ChatInterface() {
       </main>
 
       {/* Bottom Input Area */}
-      <footer className="flex-none border-t border-zinc-800/80 bg-[#141416]/95 backdrop-blur-md px-4 sm:px-6 py-4">
-        <div className="max-w-3xl mx-auto space-y-3">
-          {/* Quick Suggestions */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-            <span className="text-zinc-500 text-[11px] flex-none">Quick prompts:</span>
-            {STARTER_PROMPTS.map((prompt) => (
-              <button
-                key={prompt}
-                onClick={() => sendMessage(prompt)}
-                disabled={loading}
-                className="flex-none px-2.5 py-1 rounded-full bg-zinc-800/70 hover:bg-zinc-700/70 text-zinc-300 border border-zinc-700/50 transition disabled:opacity-50 text-[11px]"
-              >
-                {prompt}
-              </button>
-            ))}
-          </div>
-
+      <footer className="flex-none border-t border-[#222733] bg-[#0E1015]/95 backdrop-blur-md px-4 sm:px-6 py-4 z-20">
+        <div className="max-w-3xl mx-auto space-y-2.5">
           {/* Input Box */}
-          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-700/60 focus-within:border-zinc-500 rounded-xl px-3.5 py-2 shadow-inner transition">
+          <div className="flex items-center gap-2 bg-[#13161C] border border-[#2A303F] focus-within:border-[#FF6B00]/70 rounded-xl px-3.5 py-2.5 shadow-inner transition-colors">
             <input
               ref={inputRef}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Drop a product URL (e.g. 'Here is my site: calai.app') or say hi..."
+              placeholder="Paste any product URL (e.g. 'Generate video for calai.app') or ask a question..."
               disabled={loading}
-              className="flex-1 bg-transparent text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none disabled:opacity-50"
+              className="flex-1 bg-transparent text-sm text-white placeholder-[#555D6E] focus:outline-none disabled:opacity-50"
             />
             <button
               onClick={() => sendMessage()}
               disabled={!input.trim() || loading}
-              className="flex-none p-2 rounded-lg bg-zinc-100 text-zinc-900 hover:bg-white disabled:opacity-30 disabled:hover:bg-zinc-100 transition shadow"
+              className="flex-none p-2 rounded-lg bg-[#FF6B00] hover:bg-[#FF8533] text-white disabled:opacity-30 disabled:hover:bg-[#FF6B00] transition-all shadow-md shadow-[#FF6B00]/20 cursor-pointer active:scale-95"
               aria-label="Send message"
             >
               {loading ? (
-                <Loader2 className="w-4 h-4 animate-spin text-zinc-900" />
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
               ) : (
                 <Send className="w-4 h-4" />
               )}
             </button>
           </div>
+
+          <div className="flex items-center justify-between text-[11px] text-[#555D6E] px-1 font-mono">
+            <span>Press Enter to assemble</span>
+            <span>Zero-Cost • 9:16 Kinetic Video</span>
+          </div>
         </div>
       </footer>
+
+      {/* User Saved Videos Drawer */}
+      <UserVideosDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        onSelectVideo={handleSelectSavedVideo}
+        userEmail={session?.user?.email}
+      />
     </div>
   );
 }
