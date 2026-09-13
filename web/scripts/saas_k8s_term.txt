@@ -1,0 +1,5 @@
+➜  infra/deploy git:(main) kubectl rollout status deploy/worker
+  Waiting for deployment "realtime-inference-worker" rollout to finish: 16 of 16 updated replicas are available...
+  ✔ deployment "realtime-inference-worker" successfully rolled out
+  ✔ Edge latency: 8ms (p99: 14ms) • 0 errors detected
+  🚀 All microservices operational across 3 regions

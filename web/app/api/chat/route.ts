@@ -280,7 +280,7 @@ export async function POST(req: NextRequest) {
 
         let gifPath = '';
         try {
-          gifPath = await fetchReactionGif(blueprint.gif_search_term);
+          gifPath = await fetchReactionGif(blueprint.gif_search_term, blueprint.mood as any);
 
           sendEvent({
             type: 'step',

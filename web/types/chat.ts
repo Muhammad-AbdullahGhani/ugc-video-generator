@@ -33,6 +33,7 @@ export interface VideoBlueprint {
   source_url?: string;
   summary?: string;
   category?: string;
+  mood?: string;
   rationale?: string;
   brand_color?: string;
   og_title?: string;

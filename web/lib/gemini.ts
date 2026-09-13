@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { getAvailableAssets, matchAssetsByCategory, ProductCategory } from './assets';
+import { getAvailableAssets, matchAssetsByCategory, ProductCategory, MOOD_POOLS } from './assets';
 import { PageMetadata } from './metadata-extractor';
 import { VideoBlueprint } from '@/types/chat';
 
@@ -136,15 +136,28 @@ Return a strict JSON object matching this schema:
   // Category-aware asset matching
   const available = getAvailableAssets();
   const matched = matchAssetsByCategory(category, available);
+  const moodConfig = MOOD_POOLS[matched.mood];
 
   const background_video = matched.backgroundVideo;
   const audio_track = matched.audioTrack;
-  const gif_search_term = parsed.gif_search_term || matched.defaultGif;
+  
+  // Align GIF selection with mood pool to prevent hallucinations
+  let gif_search_term = matched.defaultGif;
+  if (parsed.gif_search_term) {
+    const termLower = parsed.gif_search_term.toLowerCase();
+    const belongsToMood = moodConfig.gifs.some((g) =>
+      termLower.includes(g.replace('.gif', '').replace('-', ' '))
+    );
+    if (belongsToMood) {
+      gif_search_term = parsed.gif_search_term;
+    }
+  }
+
   const brand_color = parsed.brand_color || metadata?.themeColor || '#FF6B00';
   
   // Construct bulletproof factual rationale that strictly describes the actual assets chosen
   const productContext = parsed.summary || metadata?.ogTitle || sourceUrl;
-  const rationale = `Used ${matched.footageDescription} + ${matched.audioDescription} + '${gif_search_term}' reaction meme tailored for ${productContext}.`;
+  const rationale = `Used ${matched.footageDescription} + ${matched.audioDescription} + '${gif_search_term}' reaction meme (Mood: ${moodConfig.name}) tailored for ${productContext}.`;
 
   return {
     hook_text: parsed.hook_text || `Stop struggling with manual workflows — discover ${metadata?.ogTitle || sourceUrl}.`,
@@ -154,6 +167,7 @@ Return a strict JSON object matching this schema:
     source_url: sourceUrl,
     summary: parsed.summary,
     category,
+    mood: matched.mood,
     rationale,
     brand_color,
     og_title: metadata?.ogTitle,

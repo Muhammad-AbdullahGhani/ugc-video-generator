@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { getAssetsDir } from './assets';
+import { getAssetsDir, MemeMood, MOOD_POOLS, pickRandomAsset } from './assets';
 
 const LOCAL_MEMES: Record<string, string> = {
   'mind-blown': 'mind-blown.gif',
@@ -47,19 +47,21 @@ const LOCAL_MEMES: Record<string, string> = {
   'complex': 'confused.gif',
 };
 
-export async function fetchReactionGif(searchTerm: string): Promise<string> {
+export async function fetchReactionGif(searchTerm: string, mood?: MemeMood): Promise<string> {
   const assetsDir = getAssetsDir();
   const assetsGifsDir = path.join(assetsDir, 'gifs');
   const cacheDir = path.join(os.tmpdir(), 'ugc-gif-cache');
 
   const cleanTerm = (searchTerm || 'mind blown').toLowerCase().trim();
+  const moodConfig = mood ? MOOD_POOLS[mood] : undefined;
 
-  // 1. Try external Giphy API if key provided
+  // 1. Try external Giphy API if key provided (using mood query or search term)
   const giphyKey = process.env.GIPHY_API_KEY;
   if (giphyKey) {
     try {
+      const query = moodConfig ? moodConfig.giphySearch : cleanTerm;
       const url = `https://api.giphy.com/v1/gifs/search?api_key=${giphyKey}&q=${encodeURIComponent(
-        cleanTerm
+        query
       )}&limit=1&rating=g`;
       const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
       if (res.ok) {
@@ -86,13 +88,28 @@ export async function fetchReactionGif(searchTerm: string): Promise<string> {
     }
   }
 
-  // 2. Fallback to local curated meme library
+  // 2. Direct filename candidate
   const directCandidate = path.join(assetsGifsDir, `${cleanTerm.replace(/[^a-z0-9]+/g, '-')}.gif`);
   if (fs.existsSync(directCandidate)) {
     console.log(`[GIF] Matched direct filename "${cleanTerm}" -> ${path.basename(directCandidate)}`);
     return directCandidate;
   }
 
+  // 3. Fallback within Mood pool if mood provided
+  if (moodConfig && moodConfig.gifs.length > 0) {
+    // Check if cleanTerm matches any specific gif in the mood pool
+    const matchedMoodGif = moodConfig.gifs.find((g) =>
+      cleanTerm.includes(g.replace('.gif', '').replace('-', ' '))
+    );
+    const chosenName = matchedMoodGif || pickRandomAsset(moodConfig.gifs, moodConfig.gifs[0]);
+    const moodPath = path.join(assetsGifsDir, chosenName);
+    if (fs.existsSync(moodPath)) {
+      console.log(`[GIF] Selected mood "${mood}" GIF -> ${chosenName}`);
+      return moodPath;
+    }
+  }
+
+  // 4. Fallback to local curated meme library keywords
   for (const [keyword, filename] of Object.entries(LOCAL_MEMES)) {
     if (cleanTerm.includes(keyword)) {
       const localPath = path.join(assetsGifsDir, filename);
@@ -103,7 +120,7 @@ export async function fetchReactionGif(searchTerm: string): Promise<string> {
     }
   }
 
-  // 3. Pick default / any available local GIF
+  // 5. Pick default / any available local GIF
   const defaultGif = path.join(assetsGifsDir, 'mind-blown.gif');
   if (fs.existsSync(defaultGif)) {
     return defaultGif;

@@ -1,0 +1,21 @@
+# Kubernetes Deployment manifest - Production Cluster
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: realtime-inference-worker
+  labels:
+    tier: core-mesh
+spec:
+  replicas: 16
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+  template:
+    spec:
+      containers:
+      - name: worker
+        image: registry.internal/worker:v4.8
+        resources:
+          limits:
+            cpu: 4000m
+            memory: 8Gi
