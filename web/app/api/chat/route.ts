@@ -4,6 +4,7 @@ import { scrapeWebsiteMarkdown } from '@/lib/jina';
 import { extractPageMetadata } from '@/lib/metadata-extractor';
 import { generateVideoBlueprint, generateConversationalReply } from '@/lib/gemini';
 import { fetchReactionGif } from '@/lib/gif-fetcher';
+import { MemeMood } from '@/lib/assets';
 import { renderUgcVideo } from '@/lib/video-compositor';
 import { auth } from '@/auth';
 import { saveUserVideo } from '@/lib/user-videos';
@@ -161,7 +162,7 @@ export async function POST(req: NextRequest) {
 
             // Handle edge case: Site blocks scraping or has minimal content
             if (markdown.trim().length < 80 && !metadata?.ogDescription) {
-              const gracefulNotice = `I was able to connect to **${detectedUrl}**, but the page has anti-bot protections or limited public text. Could you briefly reply with a sentence describing what your product does? I'll assemble the UGC video for you right away!`;
+              const gracefulNotice = `I reached ${detectedUrl}, but the page does not say much. Tell me what the product does in one sentence and I will cut the reel.`;
               sendEvent({
                 type: 'chat',
                 reply: gracefulNotice,
@@ -280,7 +281,10 @@ export async function POST(req: NextRequest) {
 
         let gifPath = '';
         try {
-          gifPath = await fetchReactionGif(blueprint.gif_search_term, blueprint.mood as any);
+          gifPath = await fetchReactionGif(
+            blueprint.gif_search_term,
+            blueprint.mood as MemeMood | undefined
+          );
 
           sendEvent({
             type: 'step',
@@ -380,12 +384,7 @@ export async function POST(req: NextRequest) {
           }
 
           // Reply with transparent rationale sentence and extracted brand attributes
-          const reply = `🎬 Here is your custom UGC marketing video for **${detectedUrl}**!
-
-💡 **Why this was selected:** ${blueprint.rationale}
-${blueprint.social_proof ? `\n📊 **Social Proof Incorporated:** "${blueprint.social_proof}"` : ''}
-🎨 **Brand Accent:** \`${blueprint.brand_color}\` • **Category:** \`${blueprint.category}\`
-⚡ **Quality Check:** ffprobe verified (${renderResult.duration}s duration • 9:16 vertical • 30fps)`;
+          const reply = `Reel is ready for ${detectedUrl}. ${blueprint.hook_text}`;
 
           sendEvent({
             type: 'complete',

@@ -4,22 +4,27 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import Image from 'next/image';
 import {
-  Send,
-  Film,
-  ExternalLink,
-  User,
-  Loader2,
-  Globe,
-  RefreshCw,
-  LogOut,
+  ArrowUp,
   Layers,
-  AlertCircle,
+  Plus,
+  LogOut,
+  ExternalLink,
+  Globe,
+  Loader2,
+  Film,
 } from 'lucide-react';
 import { ChatMessage, StreamEvent, SavedVideo } from '@/types/chat';
+import {
+  hostLabel,
+  isReelMessage,
+  deskStatus,
+  isCutting,
+  readableReply,
+} from '@/lib/desk-copy';
 import SignInScreen from '@/components/SignInScreen';
-import VideoPlayer from '@/components/VideoPlayer';
-import PipelineTracker from '@/components/PipelineTracker';
+import Stage from '@/components/Stage';
 import EmptyState from '@/components/EmptyState';
+import PipelineTracker from '@/components/PipelineTracker';
 import UserVideosDrawer from '@/components/UserVideosDrawer';
 
 export default function ChatInterface() {
@@ -28,6 +33,9 @@ export default function ChatInterface() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const [mobileTab, setMobileTab] = useState<'desk' | 'stage'>('desk');
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const isHydratedRef = useRef(false);
@@ -35,7 +43,7 @@ export default function ChatInterface() {
   const userKey = session?.user?.id || session?.user?.email || 'guest';
   const storageKey = `reelforge_chat_${userKey}`;
 
-  // Restore chat history from localStorage without blocking initial render
+  // Restore chat history from localStorage
   useEffect(() => {
     if (!isHydratedRef.current) {
       isHydratedRef.current = true;
@@ -78,6 +86,12 @@ export default function ChatInterface() {
     scrollToBottom();
   }, [messages, loading, scrollToBottom]);
 
+  // Find the active reel message to show on Stage
+  const activeReelMessage =
+    (selectedMessageId ? messages.find((m) => m.id === selectedMessageId) : null) ||
+    [...messages].reverse().find(isReelMessage) ||
+    null;
+
   const sendMessage = useCallback(
     async (textToSend?: string) => {
       const text = (textToSend || input).trim();
@@ -104,6 +118,7 @@ export default function ChatInterface() {
       };
 
       setMessages((prev) => [...prev, userMessage, assistantMessage]);
+      setSelectedMessageId(assistantMessageId);
       if (!textToSend) {
         setInput('');
       }
@@ -234,7 +249,7 @@ export default function ChatInterface() {
                   error: errorMsg,
                   retryable: true,
                   isStreaming: false,
-                  text: 'An error occurred while communicating with the video generation engine.',
+                  text: 'Could not connect to the reel generator.',
                 }
               : msg
           )
@@ -262,6 +277,7 @@ export default function ChatInterface() {
 
   const handleEditUrl = (url: string) => {
     setInput(url);
+    setMobileTab('desk');
     inputRef.current?.focus();
   };
 
@@ -269,9 +285,7 @@ export default function ChatInterface() {
     const historicalMessage: ChatMessage = {
       id: `saved-${video.id}`,
       sender: 'assistant',
-      text: `🎬 Restored previously generated UGC marketing video for **${video.detectedUrl}**:
-
-💡 **Decision Rationale:** ${video.blueprint?.rationale || video.rationale || 'Selected tailored assets for this brand.'}`,
+      text: `Reel for ${video.detectedUrl}.`,
       detectedUrl: video.detectedUrl,
       blueprint: video.blueprint,
       videoUrl: video.videoUrl,
@@ -279,10 +293,13 @@ export default function ChatInterface() {
       rationale: video.rationale || video.blueprint?.rationale,
     };
     setMessages((prev) => [...prev, historicalMessage]);
+    setSelectedMessageId(historicalMessage.id);
+    setMobileTab('stage');
   };
 
   const resetChat = () => {
     setMessages([]);
+    setSelectedMessageId(null);
     try {
       localStorage.removeItem(storageKey);
     } catch {}
@@ -296,242 +313,275 @@ export default function ChatInterface() {
   // Loading session state
   if (status === 'loading') {
     return (
-      <div className="h-screen bg-[#090A0C] flex flex-col items-center justify-center text-zinc-300">
-        <div className="w-10 h-10 rounded-xl bg-[#FF6B00]/15 border border-[#FF6B00]/30 flex items-center justify-center text-[#FF8533] mb-3 animate-pulse">
-          <Film className="w-5 h-5" />
-        </div>
-        <p className="text-xs text-[#8A909E] font-mono">Initializing Studio Session...</p>
+      <div className="h-dvh bg-[var(--paper)] text-[var(--ink)] flex flex-col items-center justify-center font-sans">
+        <span className="wordmark text-[18px]">ReelForge</span>
+        <p className="text-[13px] text-[var(--ink-soft)] mt-1">Starting studio…</p>
       </div>
     );
   }
 
-  return (
-    <div className="flex flex-col h-screen bg-[#090A0C] text-[#F3F4F6] font-sans overflow-hidden">
-      {/* Top Navbar */}
-      <header className="flex-none border-b border-[#222733] bg-[#0E1015]/90 backdrop-blur-md px-4 sm:px-6 py-3.5 flex items-center justify-between z-20">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#FF6B00] to-[#D95300] flex items-center justify-center text-white shadow-md shadow-[#FF6B00]/20">
-            <Film className="w-4 h-4 stroke-[2.2]" />
-          </div>
+  const working = isCutting(activeReelMessage);
 
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="font-display text-sm font-bold text-white tracking-tight">
-                REELFORGE
-              </h1>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-[#FF6B00]/15 text-[#FF8533] border border-[#FF6B00]/30">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B00] mr-1.5 animate-pulse" />
-                UGC Studio Active
-              </span>
-            </div>
-            <p className="text-[11px] text-[#717888] hidden sm:block">
-              AI Marketing Video Engine • 9:16 Vertical Export
-            </p>
-          </div>
+  return (
+    <div className="h-dvh flex flex-col bg-[var(--paper)] text-[var(--ink)] font-sans overflow-hidden">
+      {/* Top Navbar */}
+      <header className="flex-none h-14 border-b border-[var(--rule)] px-4 sm:px-6 flex items-center justify-between z-20">
+        <div className="flex items-baseline gap-2.5">
+          <span className="wordmark text-[16px]">ReelForge</span>
+          <span className="text-[12px] text-[var(--ink-soft)] hidden sm:inline">
+            {working ? `${deskStatus(activeReelMessage)}…` : deskStatus(activeReelMessage)}
+          </span>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          {/* User Saved Videos Drawer Button */}
+        {/* Mobile View Toggle */}
+        <div className="flex lg:hidden items-center rounded-lg border border-[var(--rule)] p-0.5 text-[12px]">
           <button
+            type="button"
+            onClick={() => setMobileTab('desk')}
+            className={`press px-3 py-1 rounded-md transition-colors ${
+              mobileTab === 'desk'
+                ? 'bg-[var(--ink)] text-[var(--paper)] font-medium'
+                : 'text-[var(--ink-soft)]'
+            }`}
+          >
+            Desk
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab('stage')}
+            className={`press px-3 py-1 rounded-md flex items-center gap-1.5 transition-colors ${
+              mobileTab === 'stage'
+                ? 'bg-[var(--ink)] text-[var(--paper)] font-medium'
+                : 'text-[var(--ink-soft)]'
+            }`}
+          >
+            <span>Reel</span>
+            {activeReelMessage?.videoUrl && (
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--mark)]" />
+            )}
+          </button>
+        </div>
+
+        {/* Header Actions */}
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
             onClick={() => setIsDrawerOpen(true)}
-            className="flex items-center gap-1.5 text-xs text-[#D1D5DB] hover:text-white px-3 py-1.5 rounded-lg bg-[#161922] hover:bg-[#1E2330] border border-[#262C3B] transition cursor-pointer"
-            title="View saved generations"
+            className="press text-[13px] text-[var(--ink-soft)] hover:text-[var(--ink)] flex items-center gap-1.5"
+            title="Saved reels"
           >
-            <Layers className="w-3.5 h-3.5 text-[#FF8533]" />
-            <span className="hidden sm:inline">My Videos</span>
+            <Layers className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Saved reels</span>
           </button>
 
-          {/* Reset Conversation */}
           <button
+            type="button"
             onClick={resetChat}
-            className="flex items-center gap-1.5 text-xs text-[#8A909E] hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-[#161922] border border-[#222733] transition cursor-pointer"
-            title="Reset conversation"
+            className="press text-[13px] text-[var(--ink-soft)] hover:text-[var(--ink)] flex items-center gap-1"
+            title="New session"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Reset</span>
+            <Plus className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">New</span>
           </button>
 
-          {/* User Account / Sign Out */}
-          <div className="flex items-center gap-2 pl-2 border-l border-[#222733]">
+          {/* Account Profile / Sign Out */}
+          <div className="flex items-center gap-2 pl-2 border-l border-[var(--rule)]">
             {session?.user?.image ? (
               <Image
                 src={session.user.image}
                 alt={session.user.name || 'User'}
-                width={28}
-                height={28}
+                width={26}
+                height={26}
                 unoptimized
-                className="w-7 h-7 rounded-full border border-[#FF6B00]/40 object-cover"
+                className="h-6 w-6 rounded-full object-cover border border-[var(--rule)]"
               />
             ) : (
-              <div className="w-7 h-7 rounded-full bg-[#1C202B] border border-[#2D3444] flex items-center justify-center text-xs font-semibold text-[#FF8533]">
+              <div className="h-6 w-6 rounded-full border border-[var(--rule)] grid place-items-center text-[11px] font-medium text-[var(--ink)]">
                 {session?.user?.name ? session.user.name.charAt(0).toUpperCase() : 'U'}
               </div>
             )}
 
             <button
+              type="button"
               onClick={() => signOut()}
-              className="p-1.5 rounded-lg hover:bg-[#1E222D] text-[#8A909E] hover:text-red-400 transition cursor-pointer"
+              className="press p-1 text-[var(--ink-soft)] hover:text-[var(--mark)] transition-colors"
               title="Sign out"
+              aria-label="Sign out"
             >
-              <LogOut className="w-3.5 h-3.5" />
+              <LogOut className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Chat Thread Area */}
-      <main className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6 max-w-3xl w-full mx-auto">
-        {messages.length === 0 ? (
-          <EmptyState onSelectPrompt={sendMessage} disabled={loading} />
-        ) : (
-          messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex items-start gap-3 animate-message-enter ${
-                msg.sender === 'user' ? 'justify-end' : 'justify-start'
-              }`}
-            >
-              {msg.sender === 'assistant' && (
-                <div className="flex-none w-8 h-8 rounded-xl bg-gradient-to-br from-[#1B1E28] to-[#12141A] border border-[#282F40] flex items-center justify-center text-[#FF8533] shadow-sm">
-                  <Film className="w-4 h-4 stroke-[2]" />
-                </div>
-              )}
+      {/* Main Studio Workbench */}
+      <main className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
+        {/* Left Side: Stage (Persistent workbench on desktop, toggleable on mobile) */}
+        <section
+          aria-label="Reel Stage"
+          className={`flex-1 min-h-0 overflow-y-auto lg:border-r border-[var(--rule)] ${
+            mobileTab === 'stage' ? 'flex' : 'hidden lg:flex'
+          }`}
+        >
+          <Stage
+            message={activeReelMessage}
+            onRetry={() =>
+              handleRetry(activeReelMessage?.detectedUrl || activeReelMessage?.text)
+            }
+            onEditUrl={handleEditUrl}
+          />
+        </section>
 
-              <div
-                className={`max-w-[88%] sm:max-w-xl rounded-2xl p-4 text-sm leading-relaxed transition-all shadow-md ${
-                  msg.sender === 'user'
-                    ? 'bg-[#1C202B] text-white border border-[#2E3649] rounded-tr-xs'
-                    : 'bg-[#13151B] text-[#E5E7EB] border border-[#232733] rounded-tl-xs'
-                }`}
-              >
-                {/* Main text message */}
-                {msg.text && (
-                  <div className="whitespace-pre-wrap font-sans text-sm">{msg.text}</div>
-                )}
+        {/* Right Side: Conversation & Desk */}
+        <section
+          aria-label="Conversation Desk"
+          className={`w-full lg:w-[440px] xl:w-[480px] shrink-0 min-h-0 flex flex-col bg-[var(--paper)] ${
+            mobileTab === 'desk' ? 'flex' : 'hidden lg:flex'
+          }`}
+        >
+          {/* Messages Scroll Area */}
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-4">
+            {messages.length === 0 ? (
+              <EmptyState onSelectPrompt={sendMessage} disabled={loading} />
+            ) : (
+              messages.map((msg) => {
+                const isSelected = activeReelMessage?.id === msg.id;
+                const isReel = isReelMessage(msg);
 
-                {/* Detected URL Link Badge */}
-                {msg.detectedUrl && (
-                  <div className="mt-3 pt-3 border-t border-[#232733] flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 text-xs text-[#D1D5DB] font-mono overflow-hidden">
-                      <Globe className="w-3.5 h-3.5 text-[#FF8533] flex-none" />
-                      <span className="truncate">{msg.detectedUrl}</span>
-                    </div>
-                    <a
-                      href={msg.detectedUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-none inline-flex items-center gap-1 text-[11px] text-[#FF8533] hover:underline"
-                    >
-                      Visit site <ExternalLink className="w-3 h-3" />
-                    </a>
+                return (
+                  <div
+                    key={msg.id}
+                    className={`flex flex-col ${
+                      msg.sender === 'user' ? 'items-end' : 'items-start'
+                    }`}
+                  >
+                    {/* User Message */}
+                    {msg.sender === 'user' && (
+                      <div className="max-w-[85%] rounded-2xl rounded-tr-xs bg-[var(--ink)] text-[var(--paper)] px-3.5 py-2.5 text-[14px] leading-relaxed">
+                        {msg.text}
+                      </div>
+                    )}
+
+                    {/* Assistant Message */}
+                    {msg.sender === 'assistant' && (
+                      <div className="w-full max-w-[95%] space-y-2.5">
+                        {/* Conversational Text */}
+                        {msg.text && (
+                          <p className="text-[14px] leading-relaxed text-[var(--ink)]">
+                            {readableReply(msg.text)}
+                          </p>
+                        )}
+
+                        {/* External URL badge if detected */}
+                        {msg.detectedUrl && (
+                          <div className="flex items-center gap-1.5 text-[12px] text-[var(--ink-soft)]">
+                            <Globe className="h-3 w-3" />
+                            <a
+                              href={msg.detectedUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="press truncate underline decoration-[var(--rule)] underline-offset-2 hover:text-[var(--ink)] inline-flex items-center gap-0.5"
+                            >
+                              <span>{hostLabel(msg.detectedUrl)}</span>
+                              <ExternalLink className="h-2.5 w-2.5" />
+                            </a>
+                          </div>
+                        )}
+
+                        {/* Pipeline Tracker when steps exist */}
+                        {((msg.steps && msg.steps.length > 0) || msg.isStreaming) && (
+                          <div className="pt-1">
+                            <PipelineTracker
+                              steps={msg.steps || []}
+                              activeStepId={msg.activeStepId}
+                              detectedUrl={msg.detectedUrl}
+                              error={msg.error}
+                              onRetry={() => handleRetry(msg.detectedUrl || msg.text)}
+                              onEditUrl={handleEditUrl}
+                            />
+                          </div>
+                        )}
+
+                        {/* Reel Card Focus Action */}
+                        {isReel && msg.videoUrl && (
+                          <div className="flex items-center justify-between rounded-xl border border-[var(--rule)] p-2.5 text-[12px]">
+                            <div className="flex items-center gap-2">
+                              <Film className="h-3.5 w-3.5 text-[var(--ink)]" />
+                              <span className="font-medium text-[var(--ink)] truncate max-w-[170px]">
+                                {hostLabel(msg.detectedUrl) || '9:16 Reel'}
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedMessageId(msg.id);
+                                setMobileTab('stage');
+                              }}
+                              className={`press underline underline-offset-4 text-[12px] ${
+                                isSelected ? 'font-medium text-[var(--ink)]' : 'text-[var(--ink-soft)]'
+                              }`}
+                            >
+                              {isSelected ? 'Viewing on Stage' : 'View on Stage →'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                )}
+                );
+              })
+            )}
 
-                {/* Streaming Intermediate Status Steps Pipeline */}
-                {((msg.steps && msg.steps.length > 0) || msg.isStreaming) && (
-                  <div className="mt-3.5">
-                    <PipelineTracker
-                      steps={msg.steps || []}
-                      activeStepId={msg.activeStepId}
-                      detectedUrl={msg.detectedUrl}
-                      error={msg.error}
-                      onRetry={() => handleRetry(msg.detectedUrl || msg.text)}
-                      onEditUrl={handleEditUrl}
-                    />
-                  </div>
-                )}
+            {/* Waiting indicator when query is being analyzed */}
+            {loading && messages.length > 0 && messages[messages.length - 1]?.sender === 'user' && (
+              <div className="text-[13px] text-[var(--ink-soft)] flex items-center gap-2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>Working out what it is…</span>
+              </div>
+            )}
 
-                {/* Real Video Player Component (Rendered once videoUrl is available) */}
-                {msg.videoUrl && (
-                  <div className="mt-4">
-                    <VideoPlayer
-                      videoUrl={msg.videoUrl}
-                      detectedUrl={msg.detectedUrl}
-                      blueprint={msg.blueprint}
-                      autoPlay={false}
-                    />
-                  </div>
-                )}
+            <div ref={messagesEndRef} />
+          </div>
 
-                {/* Error Banner when no pipeline tracker is present */}
-                {msg.error && (!msg.steps || msg.steps.length === 0) && (
-                  <div className="mt-3 p-3 rounded-xl bg-red-950/40 border border-red-800/50 text-xs text-red-300 flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 text-red-400 flex-none mt-0.5" />
-                    <div className="flex-1">
-                      <span>{msg.error}</span>
-                      {msg.retryable && (
-                        <button
-                          onClick={() => handleRetry(msg.detectedUrl || msg.text)}
-                          className="mt-2 block px-3 py-1 rounded bg-[#FF6B00] hover:bg-[#FF8533] text-white font-medium text-xs cursor-pointer shadow"
-                        >
-                          Retry Generation
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
+          {/* Bottom Prompt Desk */}
+          <footer className="flex-none border-t border-[var(--rule)] p-3 sm:p-4 bg-[var(--paper)]">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 rounded-xl border border-[var(--rule)] bg-transparent focus-within:border-[var(--ink)] p-1.5 pl-3 transition-colors">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Paste a product link (e.g. calai.app) or ask a question…"
+                  disabled={loading}
+                  className="flex-1 bg-transparent text-[14px] text-[var(--ink)] placeholder-[var(--ink-soft)] focus:outline-none disabled:opacity-50"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => sendMessage()}
+                  disabled={!input.trim() || loading}
+                  className="press shrink-0 grid h-8 w-8 place-items-center rounded-lg bg-[var(--ink)] text-[var(--paper)] disabled:opacity-30 transition-opacity"
+                  aria-label="Send message"
+                >
+                  {loading ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-current" />
+                  ) : (
+                    <ArrowUp className="h-4 w-4" />
+                  )}
+                </button>
               </div>
 
-              {msg.sender === 'user' && (
-                <div className="flex-none w-8 h-8 rounded-xl bg-[#262C3B] border border-[#353D52] flex items-center justify-center text-white shadow-sm">
-                  <User className="w-4 h-4" />
-                </div>
-              )}
+              <div className="flex items-center justify-between text-[11px] text-[var(--ink-soft)] px-1">
+                <span>Enter to assemble</span>
+                <span>Zero-cost • 9:16 vertical • 5 to 10s</span>
+              </div>
             </div>
-          ))
-        )}
-
-        {/* Typing indicator when assistant is preparing a response */}
-        {loading && messages.length > 0 && messages[messages.length - 1]?.sender === 'user' && (
-          <div className="flex items-start gap-3 justify-start animate-message-enter">
-            <div className="w-8 h-8 rounded-xl bg-[#1B1E28] border border-[#282F40] flex items-center justify-center text-[#FF8533]">
-              <Film className="w-4 h-4" />
-            </div>
-            <div className="bg-[#13151B] border border-[#232733] rounded-2xl rounded-tl-xs px-4 py-3 text-xs text-[#8A909E] flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#FF6B00] animate-ping" />
-              <span>Analyzing product & assembling video pipeline...</span>
-            </div>
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
+          </footer>
+        </section>
       </main>
-
-      {/* Bottom Input Area */}
-      <footer className="flex-none border-t border-[#222733] bg-[#0E1015]/95 backdrop-blur-md px-4 sm:px-6 py-4 z-20">
-        <div className="max-w-3xl mx-auto space-y-2.5">
-          {/* Input Box */}
-          <div className="flex items-center gap-2 bg-[#13161C] border border-[#2A303F] focus-within:border-[#FF6B00]/70 rounded-xl px-3.5 py-2.5 shadow-inner transition-colors">
-            <input
-              ref={inputRef}
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Paste any product URL (e.g. 'calai.app', 'linear.app') or ask a question..."
-              disabled={loading}
-              className="flex-1 bg-transparent text-sm text-white placeholder-[#555D6E] focus:outline-none disabled:opacity-50"
-            />
-            <button
-              onClick={() => sendMessage()}
-              disabled={!input.trim() || loading}
-              className="flex-none p-2 rounded-lg bg-[#FF6B00] hover:bg-[#FF8533] text-white disabled:opacity-30 disabled:hover:bg-[#FF6B00] transition-all shadow-md shadow-[#FF6B00]/20 cursor-pointer active:scale-95"
-              aria-label="Send message"
-            >
-              {loading ? (
-                <Loader2 className="w-4 h-4 animate-spin text-white" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between text-[11px] text-[#555D6E] px-1 font-mono">
-            <span>Press Enter to assemble</span>
-            <span>Zero-Cost • 9:16 Kinetic Video</span>
-          </div>
-        </div>
-      </footer>
 
       {/* User Saved Videos Drawer */}
       <UserVideosDrawer

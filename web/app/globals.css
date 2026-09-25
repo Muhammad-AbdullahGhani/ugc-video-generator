@@ -1,108 +1,138 @@
 @import "tailwindcss";
 
-@layer base {
+:root {
+  --paper: #e8e9ec;
+  --ink: #14171c;
+  --ink-soft: #4e5562;
+  --rule: #c5c9d1;
+  --mark: #be1e38;
+  --mark-ink: #fff7f7;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --font-sans: var(--font-outfit), Outfit, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
   :root {
-    --font-display: var(--font-space-grotesk), sans-serif;
-    --font-sans: var(--font-jakarta), -apple-system, BlinkMacSystemFont, sans-serif;
-    --font-mono: var(--font-jetbrains), monospace;
-
-    /* Custom Color Tokens: Studio Charcoal & Radiant Amber (Zero Teal/Blue/Purple) */
-    --bg-canvas: #090A0C;
-    --bg-surface: #111317;
-    --bg-surface-card: #161920;
-    --bg-surface-elevated: #1D222B;
-    --border-subtle: #252A34;
-    --border-strong: #363D4B;
-
-    /* Signature Accent: Electric Studio Amber */
-    --brand-amber: #FF6B00;
-    --brand-amber-light: #FF8833;
-    --brand-amber-dark: #D45500;
-    --brand-amber-glow: rgba(255, 107, 0, 0.18);
-    --brand-amber-muted: rgba(255, 107, 0, 0.08);
-    --brand-amber-border: rgba(255, 107, 0, 0.28);
-
-    /* Radii Tokens */
-    --radius-xs: 6px;
-    --radius-sm: 10px;
-    --radius-md: 14px;
-    --radius-lg: 20px;
-    --radius-xl: 28px;
-  }
-
-  body {
-    background-color: var(--bg-canvas);
-    color: #F3F4F6;
-    font-family: var(--font-sans);
-    overflow-x: hidden;
-  }
-
-  h1, h2, h3, h4, .font-display {
-    font-family: var(--font-display);
-    letter-spacing: -0.02em;
-  }
-
-  code, pre, .font-mono {
-    font-family: var(--font-mono);
+    --paper: #121418;
+    --ink: #eceee9;
+    --ink-soft: #a7adb6;
+    --rule: #2e333c;
+    --mark: #ff5d73;
+    --mark-ink: #2a0c12;
   }
 }
 
-/* Custom Scrollbar */
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  text-rendering: optimizeLegibility;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--mark) 22%, transparent);
+}
+
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 8px;
+  height: 8px;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+
 ::-webkit-scrollbar-thumb {
-  background: #252A34;
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #FF6B00;
+  background: var(--rule);
+  border-radius: 99px;
 }
 
-/* Micro-interaction Animations */
-@keyframes messageEnter {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.99);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
+.press {
+  transition: transform 160ms var(--ease-out);
+}
+
+.press:active {
+  transform: scale(0.98);
+}
+
+.wordmark {
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.phone {
+  width: 148px;
+  aspect-ratio: 9 / 16;
+  background: #1c1e22;
+  border: 1px solid #1c1e22;
+  border-radius: 26px;
+  padding: 7px;
+  box-shadow: 0 16px 36px rgba(20, 23, 28, 0.12);
+}
+
+.phone-screen {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 19px;
+  background: #0e1013;
+  color: #f4f5f2;
+}
+
+.scrub {
+  appearance: none;
+  width: 100%;
+  height: 2px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+}
+
+.scrub::-webkit-slider-thumb {
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 99px;
+  background: #f4f5f2;
+}
+
+.drawer-panel {
+  transform: translateX(0);
+  transition: transform 220ms var(--ease-out);
+  @starting-style {
+    transform: translateX(12%);
   }
 }
 
-@keyframes pulseGlow {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(255, 107, 0, 0.4);
+@media (min-width: 1024px) {
+  .phone {
+    width: 272px;
+    border-radius: 34px;
+    padding: 10px;
   }
-  50% {
-    box-shadow: 0 0 16px 2px rgba(255, 107, 0, 0.25);
-  }
-}
 
-@keyframes stepPulse {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.6;
-    transform: scale(0.95);
+  .phone-screen {
+    border-radius: 24px;
   }
 }
 
-.animate-message-enter {
-  animation: messageEnter 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+@media (prefers-color-scheme: dark) {
+  .phone {
+    box-shadow: none;
+    border-color: var(--rule);
+  }
 }
 
-.animate-pulse-glow {
-  animation: pulseGlow 2.5s infinite ease-in-out;
-}
+@media (prefers-reduced-motion: reduce) {
+  .press:active {
+    transform: none;
+  }
 
-.animate-step-pulse {
-  animation: stepPulse 1.5s infinite ease-in-out;
+  .drawer-panel {
+    transition: none;
+  }
 }

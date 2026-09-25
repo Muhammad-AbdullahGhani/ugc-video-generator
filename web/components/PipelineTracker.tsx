@@ -1,19 +1,7 @@
 'use client';
 
 import React from 'react';
-import {
-  CheckCircle2,
-  Loader2,
-  AlertCircle,
-  RefreshCw,
-  Edit3,
-  Globe,
-  Sparkles,
-  Layers,
-  Music,
-  Film,
-  ShieldCheck,
-} from 'lucide-react';
+import { Check, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { PipelineStep, StepId } from '@/types/chat';
 
 interface PipelineTrackerProps {
@@ -25,42 +13,36 @@ interface PipelineTrackerProps {
   onEditUrl?: (url: string) => void;
 }
 
-const DEFAULT_STEPS: { id: StepId; label: string; defaultDesc: string; icon: React.ElementType }[] = [
+const DEFAULT_STEPS: { id: StepId; label: string; defaultDesc: string }[] = [
   {
     id: 'reading_url',
-    label: 'Website & Metadata Ingestion',
-    defaultDesc: 'Scraping page copy, OG tags, theme color, and social proof...',
-    icon: Globe,
+    label: 'Reading the page',
+    defaultDesc: 'Scraping page copy, open graph metadata, and social proof.',
   },
   {
     id: 'extracting_context',
-    label: 'Product Context & Positioning',
-    defaultDesc: 'Analyzing category, pain points, and audience hooks with Gemini...',
-    icon: Sparkles,
+    label: 'Working out what it is',
+    defaultDesc: 'Identifying product category, pain points, and audience hook.',
   },
   {
     id: 'generating_blueprint',
-    label: 'Personalized UGC Blueprint',
-    defaultDesc: 'Crafting viral hook incorporating real social proof stats...',
-    icon: Layers,
+    label: 'Writing the line',
+    defaultDesc: 'Composing kinetic typography headline and social proof overlay.',
   },
   {
     id: 'matching_media',
-    label: 'Industry Asset Matching',
-    defaultDesc: 'Selecting vertical background & trending soundtrack for category...',
-    icon: Music,
+    label: 'Picking picture, sound, and gif',
+    defaultDesc: 'Selecting industry vertical background, soundtrack, and reaction sticker.',
   },
   {
     id: 'compositing_video',
-    label: 'Compositing 9:16 Video',
-    defaultDesc: 'Compositing 1080x1920 MP4 with brand styling & kinetic typography...',
-    icon: Film,
+    label: 'Assembling the reel',
+    defaultDesc: 'Rendering 9:16 vertical video with typography and mixed audio.',
   },
   {
     id: 'validating_video',
-    label: 'Automated Quality Verification',
-    defaultDesc: 'Validating duration (5–10s), 9:16 vertical resolution, and audio via ffprobe...',
-    icon: ShieldCheck,
+    label: 'Checking the length',
+    defaultDesc: 'Probing duration (5–10s), 9:16 resolution, and audio track via ffprobe.',
   },
 ];
 
@@ -80,34 +62,20 @@ export default function PipelineTracker({
   const hasError = !!error || steps.some((s) => s.status === 'error');
 
   return (
-    <div className="w-full rounded-2xl bg-[#12141A] border border-[#252A34] overflow-hidden shadow-lg transition-all animate-message-enter">
-      {/* Tracker Header */}
-      <div className="px-4 py-3 bg-[#161921] border-b border-[#252A34] flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {hasError ? (
-            <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
-          ) : isFinished ? (
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-          ) : (
-            <span className="w-2.5 h-2.5 rounded-full bg-[#FF6B00] animate-pulse" />
-          )}
-          <span className="font-display font-semibold text-xs text-white uppercase tracking-wider">
-            Video Assembly Pipeline
-          </span>
-        </div>
-
-        <span className="text-[11px] font-mono text-[#8A909E] bg-[#1B1F2A] px-2.5 py-0.5 rounded-full border border-[#2A3140]">
+    <div className="rounded-xl border border-[var(--rule)] p-3 text-[13px] space-y-2.5">
+      <div className="flex items-center justify-between border-b border-[var(--rule)] pb-2 text-[12px] text-[var(--ink-soft)]">
+        <span>
           {hasError
-            ? 'Pipeline Interrupted'
+            ? 'Stopped'
             : isFinished
-            ? '6/6 Verified'
-            : `Step ${Math.min(completedCount + 1, 6)} of 6`}
+            ? 'Ready'
+            : `Cutting reel (${Math.min(completedCount + 1, 6)}/6)`}
         </span>
+        {detectedUrl && <span className="truncate max-w-[200px]">{detectedUrl}</span>}
       </div>
 
-      {/* Steps List */}
-      <div className="p-4 space-y-3.5">
-        {DEFAULT_STEPS.map((defStep, idx) => {
+      <div className="space-y-1.5 pt-0.5">
+        {DEFAULT_STEPS.map((defStep) => {
           const stepData = stepsMap.get(defStep.id);
           const isActive = stepData?.status === 'active' || activeStepId === defStep.id;
           const isCompleted = stepData?.status === 'completed';
@@ -116,111 +84,62 @@ export default function PipelineTracker({
           return (
             <div
               key={defStep.id}
-              className={`flex items-start gap-3 p-2.5 rounded-xl transition-all ${
+              className={`flex items-start gap-2.5 py-0.5 ${
                 isActive
-                  ? 'bg-[#181C25] border border-[#FF6B00]/40 shadow-sm'
+                  ? 'text-[var(--ink)] font-medium'
                   : isCompleted
-                  ? 'bg-[#12151B]/60'
+                  ? 'text-[var(--ink)]'
                   : isFailed
-                  ? 'bg-red-950/20 border border-red-800/40'
-                  : 'opacity-50'
+                  ? 'text-[var(--mark)]'
+                  : 'text-[var(--ink-soft)] opacity-60'
               }`}
             >
-              {/* Step Status Indicator Icon */}
-              <div className="flex-none mt-0.5">
+              <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center">
                 {isCompleted ? (
-                  <div className="w-6 h-6 rounded-full bg-[#FF6B00]/20 text-[#FF8533] border border-[#FF6B00]/40 flex items-center justify-center">
-                    <CheckCircle2 className="w-4 h-4 text-[#FF8533]" />
-                  </div>
+                  <Check className="h-3.5 w-3.5 text-[var(--ink)]" />
                 ) : isActive ? (
-                  <div className="w-6 h-6 rounded-full bg-[#FF6B00] text-white flex items-center justify-center shadow-md shadow-[#FF6B00]/30 animate-pulse">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  </div>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--mark)]" />
                 ) : isFailed ? (
-                  <div className="w-6 h-6 rounded-full bg-red-950 text-red-400 border border-red-800/60 flex items-center justify-center">
-                    <AlertCircle className="w-4 h-4" />
-                  </div>
+                  <AlertCircle className="h-3.5 w-3.5 text-[var(--mark)]" />
                 ) : (
-                  <div className="w-6 h-6 rounded-full bg-[#1A1D26] border border-[#2B313F] text-[#555D6E] flex items-center justify-center text-[10px] font-mono">
-                    {idx + 1}
-                  </div>
+                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--rule)]" />
                 )}
-              </div>
+              </span>
 
-              {/* Step Description */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <h4
-                    className={`text-xs font-semibold truncate ${
-                      isActive
-                        ? 'text-white'
-                        : isCompleted
-                        ? 'text-[#E5E7EB]'
-                        : isFailed
-                        ? 'text-red-300'
-                        : 'text-[#6B7280]'
-                    }`}
-                  >
-                    {stepData?.label || defStep.label}
-                  </h4>
-
-                  {stepData?.completedAt && stepData?.startedAt && (
-                    <span className="text-[10px] font-mono text-[#717888] flex-none">
-                      {((stepData.completedAt - stepData.startedAt) / 1000).toFixed(1)}s
-                    </span>
-                  )}
-                </div>
-
-                <p
-                  className={`text-[11px] mt-0.5 leading-normal ${
-                    isActive
-                      ? 'text-[#FF8533]'
-                      : isCompleted
-                      ? 'text-[#8A909E]'
-                      : isFailed
-                      ? 'text-red-400'
-                      : 'text-[#555D6E]'
-                  }`}
-                >
-                  {stepData?.description || defStep.defaultDesc}
-                </p>
+              <div className="min-w-0 flex-1 flex items-baseline justify-between gap-2">
+                <span className="truncate">{defStep.label}</span>
+                {stepData?.completedAt && stepData?.startedAt && (
+                  <span className="text-[11px] text-[var(--ink-soft)] tabular-nums shrink-0">
+                    {((stepData.completedAt - stepData.startedAt) / 1000).toFixed(1)}s
+                  </span>
+                )}
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Error Callout with Clear Retry Action */}
       {hasError && (
-        <div className="p-4 bg-red-950/30 border-t border-red-900/40 space-y-3">
-          <div className="flex items-start gap-2.5 text-xs text-red-300">
-            <AlertCircle className="w-4 h-4 text-red-400 flex-none mt-0.5" />
-            <div>
-              <span className="font-semibold block text-red-200">Video Generation Interrupted</span>
-              <p className="text-[11px] text-red-300/90 mt-0.5">
-                {error || 'An unexpected error prevented this step from finishing.'}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 pt-1">
+        <div className="border-t border-[var(--rule)] pt-2 text-[12px] space-y-1.5">
+          <p className="text-[var(--mark)]">{error || 'Generation interrupted.'}</p>
+          <div className="flex gap-4">
             {onRetry && (
               <button
+                type="button"
                 onClick={onRetry}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#FF6B00] hover:bg-[#FF8533] text-white text-xs font-semibold transition cursor-pointer shadow"
+                className="press flex items-center gap-1 underline underline-offset-4"
               >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Retry Generation</span>
+                <RefreshCw className="h-3 w-3" />
+                <span>Try again</span>
               </button>
             )}
-
             {detectedUrl && onEditUrl && (
               <button
+                type="button"
                 onClick={() => onEditUrl(detectedUrl)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#1D222C] hover:bg-[#272D3A] text-xs text-[#D1D5DB] border border-[#2D3442] transition cursor-pointer"
+                className="press text-[var(--ink-soft)] underline decoration-[var(--rule)] underline-offset-4"
               >
-                <Edit3 className="w-3.5 h-3.5 text-[#9CA3AF]" />
-                <span>Edit Link</span>
+                Change link
               </button>
             )}
           </div>

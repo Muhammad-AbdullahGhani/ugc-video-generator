@@ -1,24 +1,9 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
-import {
-  Play,
-  Pause,
-  Volume2,
-  VolumeX,
-  Maximize,
-  Download,
-  Copy,
-  Check,
-  Film,
-  Sparkles,
-  Share2,
-  ChevronDown,
-  ChevronUp,
-  Lightbulb,
-  ShieldCheck,
-} from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Maximize, Pause, Play, Volume2, VolumeX } from 'lucide-react';
 import { VideoBlueprint } from '@/types/chat';
+import { hostLabel } from '@/lib/desk-copy';
 
 interface VideoPlayerProps {
   videoUrl: string;
@@ -29,11 +14,12 @@ interface VideoPlayerProps {
 
 export default function VideoPlayer({
   videoUrl,
+  detectedUrl,
   blueprint,
   autoPlay = false,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const screenRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -41,34 +27,25 @@ export default function VideoPlayer({
   const [duration, setDuration] = useState(0);
   const [isCopied, setIsCopied] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     const onTimeUpdate = () => {
-      if (video.duration) {
-        setProgress((video.currentTime / video.duration) * 100);
-        setCurrentTime(video.currentTime);
-      }
+      if (!video.duration) return;
+      setProgress((video.currentTime / video.duration) * 100);
+      setCurrentTime(video.currentTime);
     };
-
     const onLoadedMetadata = () => {
-      setDuration(video.duration || 7);
+      setDuration(video.duration || 0);
       if (autoPlay) {
-        video.play().catch(() => {
-          // Autoplay policy prevented playback
-        });
+        video.play().catch(() => {});
       }
     };
-
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
-    const onEnded = () => {
-      setIsPlaying(false);
-      setProgress(100);
-    };
+    const onEnded = () => setIsPlaying(false);
 
     video.addEventListener('timeupdate', onTimeUpdate);
     video.addEventListener('loadedmetadata', onLoadedMetadata);
@@ -86,324 +63,164 @@ export default function VideoPlayer({
   }, [videoUrl, autoPlay]);
 
   const togglePlay = () => {
-    if (!videoRef.current) return;
-    if (isPlaying) {
-      videoRef.current.pause();
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) {
+      video.play().catch(() => {});
     } else {
-      videoRef.current.play();
+      video.pause();
     }
   };
 
-  const toggleMute = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!videoRef.current) return;
-    videoRef.current.muted = !isMuted;
-    setIsMuted(!isMuted);
+  const toggleMute = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = !video.muted;
+    setIsMuted(video.muted);
   };
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!videoRef.current || !videoRef.current.duration) return;
-    const newTime = (parseFloat(e.target.value) / 100) * videoRef.current.duration;
-    videoRef.current.currentTime = newTime;
-    setProgress(parseFloat(e.target.value));
+  const handleSeek = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const video = videoRef.current;
+    if (!video?.duration) return;
+    const next = (parseFloat(event.target.value) / 100) * video.duration;
+    video.currentTime = next;
+    setProgress(parseFloat(event.target.value));
   };
 
-  const toggleFullscreen = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!containerRef.current) return;
+  const toggleFullscreen = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    const node = screenRef.current;
+    if (!node) return;
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});
     } else {
-      containerRef.current.requestFullscreen().catch(() => {});
+      node.requestFullscreen().catch(() => {});
     }
   };
 
-  const handleDownload = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDownload = async () => {
+    const host = hostLabel(detectedUrl || blueprint?.source_url) || 'reel';
+    const filename = `reel-${host}.mp4`;
     try {
       setIsDownloading(true);
-      const filename = `reelforge-${Date.now()}.mp4`;
-
       if (videoUrl.startsWith('blob:') || videoUrl.startsWith('data:')) {
-        const a = document.createElement('a');
-        a.href = videoUrl;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        const anchor = document.createElement('a');
+        anchor.href = videoUrl;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
         return;
       }
-
-      const res = await fetch(videoUrl);
-      const blob = await res.blob();
+      const response = await fetch(videoUrl);
+      const blob = await response.blob();
       const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      const anchor = document.createElement('a');
+      anchor.href = blobUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
       setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
-    } catch (err) {
-      console.warn('Direct blob download failed, opening URL:', err);
-      window.open(videoUrl, '_blank');
+    } catch {
+      window.open(videoUrl, '_blank', 'noopener,noreferrer');
     } finally {
       setIsDownloading(false);
     }
   };
 
-  const handleShare = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (typeof navigator !== 'undefined' && navigator.share) {
-      try {
-        await navigator.share({
-          title: blueprint?.og_title || 'UGC Video Ad',
-          text: `Check out this UGC video for ${blueprint?.source_url || 'product'}!`,
-          url: videoUrl,
-        });
-        return;
-      } catch {
-        // User canceled or failed, fallback to copy
-      }
-    }
-
+  const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(videoUrl);
       setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
+      setTimeout(() => setIsCopied(false), 1600);
     } catch {
-      // Clipboard fallback
+      window.open(videoUrl, '_blank', 'noopener,noreferrer');
     }
   };
 
   const formatTime = (secs: number) => {
-    const s = Math.floor(secs);
-    const m = Math.floor(s / 60);
-    const remaining = s % 60;
-    return `${m}:${remaining < 10 ? '0' : ''}${remaining}`;
+    const total = Math.max(0, Math.floor(secs));
+    const minutes = Math.floor(total / 60);
+    const remain = total % 60;
+    return `${minutes}:${remain < 10 ? '0' : ''}${remain}`;
   };
 
   return (
-    <div className="w-full rounded-2xl bg-[#14171E] border border-[#252A34] overflow-hidden shadow-xl transition-all">
-      {/* Player Header */}
-      <div className="px-4 py-3 border-b border-[#252A34] bg-[#111317]/80 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-[#FF6B00] animate-pulse" />
-          <span className="font-display font-semibold text-xs text-white uppercase tracking-wider flex items-center gap-1.5">
-            <Film className="w-3.5 h-3.5 text-[#FF8533]" /> UGC Video Player (9:16)
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          {blueprint?.brand_color && (
-            <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#1A1D26] border border-[#2A3140] text-[#D1D5DB]">
-              <span
-                className="w-2 h-2 rounded-full"
-                style={{ backgroundColor: blueprint.brand_color }}
-              />
-              {blueprint.brand_color}
-            </span>
-          )}
-
-          <span className="text-[10px] font-mono text-[#FF8533] bg-[#FF6B00]/10 border border-[#FF6B00]/30 px-2 py-0.5 rounded-full flex items-center gap-1">
-            <ShieldCheck className="w-3 h-3" /> ffprobe verified
-          </span>
-
-          <button
-            onClick={handleShare}
-            title="Share or copy video link"
-            className="p-1.5 rounded-lg bg-[#1C2028] hover:bg-[#252B36] text-[#9CA3AF] hover:text-white border border-[#2A303C] transition cursor-pointer"
-          >
-            {isCopied ? (
-              <Check className="w-3.5 h-3.5 text-emerald-400" />
-            ) : (
-              <Copy className="w-3.5 h-3.5" />
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Main Video Viewport */}
-      <div className="p-4 flex flex-col items-center justify-center bg-[#0C0D11]">
+    <div>
+      <div className="phone">
         <div
-          ref={containerRef}
+          ref={screenRef}
           onClick={togglePlay}
-          className="relative max-w-[280px] sm:max-w-[320px] w-full aspect-[9/16] rounded-xl overflow-hidden bg-black shadow-2xl cursor-pointer group select-none border border-[#252A34]"
+          className="phone-screen cursor-pointer select-none"
         >
           <video
             ref={videoRef}
             src={videoUrl}
             playsInline
             loop
-            className="w-full h-full object-cover"
+            className="h-full w-full object-cover"
           />
 
-          {/* Big Center Play/Pause button on hover or when paused */}
-          <div
-            className={`absolute inset-0 flex items-center justify-center bg-black/30 transition-opacity ${
-              isPlaying ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'
-            }`}
-          >
-            <div className="w-13 h-13 rounded-full bg-[#FF6B00]/90 text-white flex items-center justify-center shadow-lg transform transition-transform group-hover:scale-110">
-              {isPlaying ? (
-                <Pause className="w-6 h-6 fill-white" />
-              ) : (
-                <Play className="w-6 h-6 fill-white ml-0.5" />
-              )}
+          {!isPlaying && (
+            <div className="pointer-events-none absolute inset-0 grid place-items-center">
+              <span className="grid h-11 w-11 place-items-center rounded-full bg-[#f4efe6] text-[#161411]">
+                <Play className="ml-0.5 h-4 w-4 fill-current" />
+              </span>
             </div>
-          </div>
+          )}
 
-          {/* Quick Mute button overlay in corner */}
           <button
+            type="button"
             onClick={toggleMute}
-            className="absolute top-3 right-3 p-2 rounded-full bg-black/60 backdrop-blur-md text-white/90 hover:text-white hover:bg-black/80 transition"
             aria-label={isMuted ? 'Unmute' : 'Mute'}
+            className="absolute top-2.5 right-2.5 grid h-7 w-7 place-items-center rounded-full bg-black/45 text-white"
           >
-            {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            {isMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
           </button>
 
-          {/* Bottom In-Video Bar */}
           <div
-            onClick={(e) => e.stopPropagation()}
-            className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-3 pt-6 space-y-2"
+            onClick={(event) => event.stopPropagation()}
+            className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2.5 pt-8 pb-2.5"
           >
-            {/* Scrubber */}
             <input
+              className="scrub"
               type="range"
               min="0"
               max="100"
               step="0.1"
               value={progress}
               onChange={handleSeek}
-              className="w-full h-1 bg-white/25 rounded-lg appearance-none cursor-pointer accent-[#FF6B00]"
+              aria-label="Seek"
             />
-
-            <div className="flex items-center justify-between text-[11px] text-white/90 font-mono">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={togglePlay}
-                  className="hover:text-[#FF8533] transition"
-                  aria-label="Play/Pause"
-                >
-                  {isPlaying ? (
-                    <Pause className="w-3.5 h-3.5" />
-                  ) : (
-                    <Play className="w-3.5 h-3.5 fill-white" />
-                  )}
-                </button>
-                <span>
-                  {formatTime(currentTime)} / {formatTime(duration)}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={toggleFullscreen}
-                  className="hover:text-[#FF8533] transition"
-                  aria-label="Fullscreen"
-                >
-                  <Maximize className="w-3.5 h-3.5" />
-                </button>
-              </div>
+            <div className="mt-1.5 flex items-center justify-between text-[11px] text-white/85 tabular-nums">
+              <button type="button" onClick={togglePlay} aria-label={isPlaying ? 'Pause' : 'Play'}>
+                {isPlaying ? (
+                  <Pause className="h-3.5 w-3.5" />
+                ) : (
+                  <Play className="h-3.5 w-3.5 fill-current" />
+                )}
+              </button>
+              <span>
+                {formatTime(currentTime)} / {formatTime(duration)}
+              </span>
+              <button type="button" onClick={toggleFullscreen} aria-label="Fullscreen">
+                <Maximize className="h-3.5 w-3.5" />
+              </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Decision Rationale Strip (Proves decision, not random draw) */}
-      {blueprint?.rationale && (
-        <div className="px-4 py-2.5 bg-[#101217] border-t border-[#222733] flex items-start gap-2 text-xs">
-          <Lightbulb className="w-3.5 h-3.5 text-[#FF8533] flex-none mt-0.5" />
-          <p className="text-[#9CA3AF] text-[11px] leading-relaxed">
-            <strong className="text-[#D1D5DB]">Creative Decision:</strong> {blueprint.rationale}
-          </p>
-        </div>
-      )}
-
-      {/* Action Bar */}
-      <div className="p-3.5 bg-[#121419] border-t border-[#252A34] flex flex-wrap items-center justify-between gap-2.5">
-        <button
-          onClick={() => setShowDetails(!showDetails)}
-          className="inline-flex items-center gap-1.5 text-xs text-[#9CA3AF] hover:text-[#D1D5DB] px-2.5 py-1.5 rounded-lg bg-[#191D26] border border-[#2A303E] transition cursor-pointer"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-[#FF8533]" />
-          <span>Blueprint Details</span>
-          {showDetails ? (
-            <ChevronUp className="w-3.5 h-3.5" />
-          ) : (
-            <ChevronDown className="w-3.5 h-3.5" />
-          )}
+      <div className="mt-3 flex items-center gap-4 text-[13px]">
+        <button type="button" onClick={handleDownload} disabled={isDownloading} className="press underline decoration-[var(--rule)] underline-offset-4">
+          {isDownloading ? 'Saving…' : 'Download'}
         </button>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleShare}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#191D26] hover:bg-[#232936] text-xs text-[#D1D5DB] hover:text-white border border-[#2A303E] transition cursor-pointer"
-          >
-            {isCopied ? (
-              <>
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Copied!</span>
-              </>
-            ) : (
-              <>
-                <Share2 className="w-3.5 h-3.5 text-[#FF8533]" />
-                <span>Share Video</span>
-              </>
-            )}
-          </button>
-
-          <button
-            onClick={handleDownload}
-            disabled={isDownloading}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#FF6B00] hover:bg-[#FF8533] text-white font-medium text-xs shadow-md shadow-[#FF6B00]/20 transition disabled:opacity-50 cursor-pointer active:scale-95"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>{isDownloading ? 'Downloading...' : 'Download MP4'}</span>
-          </button>
-        </div>
+        <button type="button" onClick={handleCopy} className="press text-[var(--ink-soft)] underline decoration-[var(--rule)] underline-offset-4">
+          {isCopied ? 'Copied' : 'Copy link'}
+        </button>
       </div>
-
-      {/* Expandable Blueprint Details */}
-      {showDetails && blueprint && (
-        <div className="p-4 bg-[#0F1116] border-t border-[#252A34] text-xs space-y-3">
-          <div>
-            <span className="text-[11px] text-[#717888] font-medium block mb-1">
-              Personalized Hook Overlay:
-            </span>
-            <div className="p-2.5 rounded-lg bg-[#151820] border border-[#252A34] text-white font-medium">
-              &ldquo;{blueprint.hook_text}&rdquo;
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
-            <div className="p-2.5 rounded-lg bg-[#151820] border border-[#252A34]">
-              <span className="text-[#717888] block">Industry Category</span>
-              <span className="font-mono text-[#FF8533] uppercase truncate block mt-0.5">
-                {blueprint.category || 'General'}
-              </span>
-            </div>
-            <div className="p-2.5 rounded-lg bg-[#151820] border border-[#252A34]">
-              <span className="text-[#717888] block">Meme Reaction GIF</span>
-              <span className="font-mono text-[#D1D5DB] truncate block mt-0.5">
-                {blueprint.gif_search_term}
-              </span>
-            </div>
-            <div className="p-2.5 rounded-lg bg-[#151820] border border-[#252A34]">
-              <span className="text-[#717888] block">Soundtrack</span>
-              <span className="font-mono text-[#D1D5DB] truncate block mt-0.5">
-                {blueprint.audio_track}
-              </span>
-            </div>
-          </div>
-
-          {blueprint.social_proof && (
-            <div className="p-2.5 rounded-lg bg-[#151820] border border-[#252A34] text-[11px]">
-              <span className="text-[#717888] block">Extracted Social Proof:</span>
-              <span className="font-mono text-white mt-0.5 block">{blueprint.social_proof}</span>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

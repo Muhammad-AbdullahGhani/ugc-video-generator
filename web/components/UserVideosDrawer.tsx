@@ -1,15 +1,9 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import {
-  X,
-  Film,
-  Trash2,
-  Play,
-  Calendar,
-  RefreshCw,
-} from 'lucide-react';
+import { X, Trash2, Play, RefreshCw } from 'lucide-react';
 import { SavedVideo } from '@/types/chat';
+import { hostLabel } from '@/lib/desk-copy';
 
 interface UserVideosDrawerProps {
   isOpen: boolean;
@@ -73,111 +67,106 @@ export default function UserVideosDrawer({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden flex justify-end">
+    <div className="fixed inset-0 z-50 flex justify-end">
       {/* Backdrop */}
       <div
         onClick={onClose}
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity"
       />
 
       {/* Drawer Panel */}
-      <div className="relative w-full max-w-md bg-[#121419] border-l border-[#252A34] h-full shadow-2xl flex flex-col z-10 font-sans">
+      <div className="drawer-panel relative h-full w-full max-w-sm border-l border-[var(--rule)] bg-[var(--paper)] text-[var(--ink)] shadow-2xl flex flex-col z-10">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-[#252A34] flex items-center justify-between bg-[#151820]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#FF6B00]/15 border border-[#FF6B00]/30 flex items-center justify-center text-[#FF8533]">
-              <Film className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="font-display font-semibold text-sm text-white">
-                My Video Generations
-              </h3>
-              <p className="text-[11px] text-[#8A909E] font-mono truncate max-w-[200px]">
-                {userEmail || 'Account Studio'}
-              </p>
-            </div>
+        <div className="flex items-center justify-between border-b border-[var(--rule)] px-5 py-4">
+          <div>
+            <h3 className="text-[15px] font-semibold tracking-tight">Saved Reels</h3>
+            <p className="text-[12px] text-[var(--ink-soft)] truncate max-w-[200px]">
+              {userEmail || 'Guest session'}
+            </p>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={fetchVideos}
-              className="p-1.5 rounded-lg hover:bg-[#1E222D] text-[#8A909E] hover:text-white transition"
-              title="Refresh videos"
+              className="press p-1.5 text-[var(--ink-soft)] hover:text-[var(--ink)]"
+              title="Refresh"
+              aria-label="Refresh"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
             </button>
             <button
+              type="button"
               onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-[#1E222D] text-[#8A909E] hover:text-white transition"
-              title="Close drawer"
+              className="press p-1.5 text-[var(--ink-soft)] hover:text-[var(--ink)]"
+              title="Close"
+              aria-label="Close"
             >
-              <X className="w-4 h-4" />
+              <X className="h-4 w-4" />
             </button>
           </div>
         </div>
 
         {/* Video List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
           {loading && videos.length === 0 ? (
-            <div className="py-12 text-center text-xs text-[#8A909E]">
-              <RefreshCw className="w-5 h-5 animate-spin mx-auto text-[#FF6B00] mb-2" />
-              Loading your generated videos...
+            <div className="py-12 text-center text-[13px] text-[var(--ink-soft)]">
+              Loading reels…
             </div>
           ) : videos.length === 0 ? (
-            <div className="py-16 text-center space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-[#191D26] border border-[#252B38] flex items-center justify-center mx-auto text-[#6B7280]">
-                <Film className="w-6 h-6" />
-              </div>
-              <div>
-                <h4 className="text-sm font-semibold text-white">No videos generated yet</h4>
-                <p className="text-xs text-[#8A909E] mt-1 max-w-xs mx-auto">
-                  Paste a product URL into the chat to assemble your first UGC marketing video!
-                </p>
-              </div>
+            <div className="py-16 text-center text-[13px] text-[var(--ink-soft)] space-y-1">
+              <p className="font-medium text-[var(--ink)]">No reels yet</p>
+              <p>Paste a product link in the chat to cut a reel.</p>
             </div>
           ) : (
-            videos.map((vid) => (
-              <div
-                key={vid.id}
-                onClick={() => {
-                  onSelectVideo(vid);
-                  onClose();
-                }}
-                className="p-3.5 rounded-xl bg-[#161921] hover:bg-[#1B202A] border border-[#252A34] hover:border-[#FF6B00]/40 transition-all cursor-pointer group relative"
-              >
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <span className="text-xs font-semibold text-white group-hover:text-[#FF8533] transition-colors truncate">
-                    {vid.detectedUrl}
-                  </span>
-                  <button
-                    onClick={(e) => handleDelete(e, vid.id)}
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-950/40 text-red-400 transition"
-                    title="Delete saved record"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+            videos.map((vid) => {
+              const label = hostLabel(vid.detectedUrl) || vid.detectedUrl || 'Reel';
+              const hook = vid.hookText || vid.blueprint?.hook_text;
+              return (
+                <div
+                  key={vid.id}
+                  onClick={() => {
+                    onSelectVideo(vid);
+                    onClose();
+                  }}
+                  className="press group relative rounded-xl border border-[var(--rule)] p-3.5 hover:border-[var(--ink)] transition-colors cursor-pointer"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-[14px] font-medium truncate group-hover:underline underline-offset-2">
+                      {label}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => handleDelete(e, vid.id)}
+                      className="opacity-0 group-hover:opacity-100 p-1 text-[var(--ink-soft)] hover:text-[var(--mark)] transition-opacity"
+                      title="Delete"
+                      aria-label="Delete saved reel"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+
+                  {hook && (
+                    <p className="mt-1 text-[12px] leading-snug text-[var(--ink-soft)] line-clamp-2">
+                      &ldquo;{hook}&rdquo;
+                    </p>
+                  )}
+
+                  <div className="mt-2.5 flex items-center justify-between text-[11px] text-[var(--ink-soft)] border-t border-[var(--rule)] pt-2">
+                    <span>
+                      {new Date(vid.createdAt).toLocaleDateString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </span>
+                    <span className="flex items-center gap-1 font-medium group-hover:translate-x-0.5 transition-transform text-[var(--ink)]">
+                      <Play className="h-3 w-3 fill-current" />
+                      <span>Watch</span>
+                    </span>
+                  </div>
                 </div>
-
-                <p className="text-[11px] text-[#9CA3AF] line-clamp-2 italic mb-2.5">
-                  &ldquo;{vid.hookText || vid.blueprint?.hook_text}&rdquo;
-                </p>
-
-                <div className="flex items-center justify-between text-[10px] text-[#6B7280] font-mono pt-2 border-t border-[#232834]">
-                  <span className="flex items-center gap-1">
-                    <Calendar className="w-3 h-3" />
-                    {new Date(vid.createdAt).toLocaleDateString(undefined, {
-                      month: 'short',
-                      day: 'numeric',
-                    })}
-                  </span>
-
-                  <span className="flex items-center gap-1 text-[#FF8533] font-medium group-hover:translate-x-0.5 transition-transform">
-                    <Play className="w-3 h-3 fill-current" />
-                    <span>View Video</span>
-                  </span>
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

@@ -185,7 +185,7 @@ export async function generateConversationalReply(
     process.env.GOOGLE_GENAI_API_KEY;
 
   if (!apiKey) {
-    return "Hi there! I'm your ReelForge UGC Assistant. Drop any product URL (e.g. `calai.app` or `linear.app`), and I'll generate a 9:16 vertical video for you!";
+    return 'Hey. Paste a product link and I will cut a short reel. If you are just saying hi, hi.';
   }
 
   const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
@@ -196,7 +196,7 @@ export async function generateConversationalReply(
   const genAI = new GoogleGenerativeAI(apiKey);
 
   const systemInstruction =
-    "You are ReelForge's charismatic AI UGC producer. You chat naturally, concisely, and warmly. You answer general questions, share UGC marketing advice, or talk casually. You NEVER pretend to render a video unless a URL or product name is explicitly shared. When asked what you can do or when appropriate, invite the user to paste any product URL to generate a custom 9:16 vertical marketing video.";
+    'You are the person on the other side of ReelForge. Talk like a person: short, no emoji, no markdown, no bullet lists. If they say hi, greet them. If they ask what you can do, say you make short UGC videos. They send a product URL, you assemble a background, a line of text, a track, and a gif. Do not claim a video is rendering unless they included a product or a URL. One to three sentences.';
 
   for (const modelCandidate of candidateModels) {
     try {
@@ -240,5 +240,5 @@ export async function generateConversationalReply(
     }
   }
 
-  return "Hey there! How can I help you today? Feel free to ask questions or drop a product link (e.g. `calai.app`) to generate a custom UGC video ad!";
+  return 'Hey. Send a product link when you want a reel.';
 }

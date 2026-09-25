@@ -3,7 +3,7 @@ import { auth } from '@/auth';
 import { getUserVideos, saveUserVideo, deleteUserVideo } from '@/lib/user-videos';
 import { SavedVideo } from '@/types/chat';
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
   const session = await auth();
   const userId = session?.user?.id || session?.user?.email;
 
