@@ -1,7 +1,16 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Maximize, Pause, Play, Volume2, VolumeX } from 'lucide-react';
+import {
+  Play,
+  Pause,
+  Volume2,
+  VolumeX,
+  Maximize,
+  Download,
+  Copy,
+  Check,
+} from 'lucide-react';
 import { VideoBlueprint } from '@/types/chat';
 import { hostLabel } from '@/lib/desk-copy';
 
@@ -16,10 +25,10 @@ export default function VideoPlayer({
   videoUrl,
   detectedUrl,
   blueprint,
-  autoPlay = false,
+  autoPlay = true,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const screenRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -37,12 +46,14 @@ export default function VideoPlayer({
       setProgress((video.currentTime / video.duration) * 100);
       setCurrentTime(video.currentTime);
     };
+
     const onLoadedMetadata = () => {
       setDuration(video.duration || 0);
       if (autoPlay) {
         video.play().catch(() => {});
       }
     };
+
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
     const onEnded = () => setIsPlaying(false);
@@ -72,25 +83,25 @@ export default function VideoPlayer({
     }
   };
 
-  const toggleMute = (event: React.MouseEvent) => {
-    event.stopPropagation();
+  const toggleMute = (e: React.MouseEvent) => {
+    e.stopPropagation();
     const video = videoRef.current;
     if (!video) return;
     video.muted = !video.muted;
     setIsMuted(video.muted);
   };
 
-  const handleSeek = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const video = videoRef.current;
     if (!video?.duration) return;
-    const next = (parseFloat(event.target.value) / 100) * video.duration;
-    video.currentTime = next;
-    setProgress(parseFloat(event.target.value));
+    const target = (parseFloat(e.target.value) / 100) * video.duration;
+    video.currentTime = target;
+    setProgress(parseFloat(e.target.value));
   };
 
-  const toggleFullscreen = (event: React.MouseEvent) => {
-    event.stopPropagation();
-    const node = screenRef.current;
+  const toggleFullscreen = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const node = containerRef.current;
     if (!node) return;
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});
@@ -100,29 +111,31 @@ export default function VideoPlayer({
   };
 
   const handleDownload = async () => {
-    const host = hostLabel(detectedUrl || blueprint?.source_url) || 'reel';
-    const filename = `reel-${host}.mp4`;
+    const host = hostLabel(detectedUrl || blueprint?.source_url) || 'reelforge';
+    const filename = `reel-${host}-${Date.now()}.mp4`;
+
     try {
       setIsDownloading(true);
       if (videoUrl.startsWith('blob:') || videoUrl.startsWith('data:')) {
-        const anchor = document.createElement('a');
-        anchor.href = videoUrl;
-        anchor.download = filename;
-        document.body.appendChild(anchor);
-        anchor.click();
-        document.body.removeChild(anchor);
+        const a = document.createElement('a');
+        a.href = videoUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
         return;
       }
-      const response = await fetch(videoUrl);
-      const blob = await response.blob();
+
+      const res = await fetch(videoUrl);
+      const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = blobUrl;
-      anchor.download = filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 8000);
     } catch {
       window.open(videoUrl, '_blank', 'noopener,noreferrer');
     } finally {
@@ -130,11 +143,11 @@ export default function VideoPlayer({
     }
   };
 
-  const handleCopy = async () => {
+  const handleCopyLink = async () => {
     try {
       await navigator.clipboard.writeText(videoUrl);
       setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 1600);
+      setTimeout(() => setIsCopied(false), 2000);
     } catch {
       window.open(videoUrl, '_blank', 'noopener,noreferrer');
     }
@@ -142,19 +155,23 @@ export default function VideoPlayer({
 
   const formatTime = (secs: number) => {
     const total = Math.max(0, Math.floor(secs));
-    const minutes = Math.floor(total / 60);
-    const remain = total % 60;
-    return `${minutes}:${remain < 10 ? '0' : ''}${remain}`;
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
+  const brandColor = blueprint?.brand_color || '#E53525';
+
   return (
-    <div>
-      <div className="phone">
+    <div className="flex flex-col items-center">
+      {/* 9:16 Vertical Phone Container */}
+      <div className="phone relative group">
         <div
-          ref={screenRef}
+          ref={containerRef}
           onClick={togglePlay}
-          className="phone-screen cursor-pointer select-none"
+          className="phone-screen cursor-pointer select-none relative overflow-hidden"
         >
+          {/* Native HTML5 Video Element */}
           <video
             ref={videoRef}
             src={videoUrl}
@@ -163,49 +180,88 @@ export default function VideoPlayer({
             className="h-full w-full object-cover"
           />
 
-          {!isPlaying && (
-            <div className="pointer-events-none absolute inset-0 grid place-items-center">
-              <span className="grid h-11 w-11 place-items-center rounded-full bg-[#f4efe6] text-[#161411]">
-                <Play className="ml-0.5 h-4 w-4 fill-current" />
+          {/* Top Overlay Badge with Brand Color */}
+          <div className="absolute top-2.5 inset-x-2.5 z-20 flex items-center justify-between pointer-events-none">
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-xs border border-white/10 font-mono text-[9px] text-white">
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: brandColor }}
+              />
+              <span className="font-bold uppercase tracking-wider">
+                {hostLabel(detectedUrl) || '9:16 REEL'}
               </span>
+            </div>
+
+            {/* Audio Equalizer bars when playing and unmuted */}
+            <div className="flex items-center gap-1.5">
+              {isPlaying && !isMuted && (
+                <div className="flex items-end gap-0.5 h-3 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-xs">
+                  <span className="eq-bar-1 w-0.5 bg-[var(--accent)] rounded-full" />
+                  <span className="eq-bar-2 w-0.5 bg-white rounded-full" />
+                  <span className="eq-bar-3 w-0.5 bg-[var(--accent)] rounded-full" />
+                  <span className="eq-bar-4 w-0.5 bg-white rounded-full" />
+                </div>
+              )}
+
+              {/* Sound Toggle Button */}
+              <button
+                type="button"
+                onClick={toggleMute}
+                aria-label={isMuted ? 'Unmute' : 'Mute'}
+                className="pointer-events-auto h-7 w-7 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-xs text-white grid place-items-center press transition-colors"
+              >
+                {isMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Center Play Button Overlay (when paused) */}
+          {!isPlaying && (
+            <div className="pointer-events-none absolute inset-0 grid place-items-center bg-black/20 backdrop-blur-[1px] transition-all">
+              <div className="h-12 w-12 rounded-full bg-white/90 text-black grid place-items-center shadow-lg transform group-hover:scale-105 transition-transform">
+                <Play className="h-5 w-5 fill-current ml-0.5" />
+              </div>
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={toggleMute}
-            aria-label={isMuted ? 'Unmute' : 'Mute'}
-            className="absolute top-2.5 right-2.5 grid h-7 w-7 place-items-center rounded-full bg-black/45 text-white"
-          >
-            {isMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
-          </button>
-
+          {/* Bottom Controls Bar */}
           <div
-            onClick={(event) => event.stopPropagation()}
-            className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2.5 pt-8 pb-2.5"
+            onClick={(e) => e.stopPropagation()}
+            className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-3 pt-8 pb-3 z-20"
           >
+            {/* Scrubber slider */}
             <input
-              className="scrub"
               type="range"
               min="0"
               max="100"
               step="0.1"
               value={progress}
               onChange={handleSeek}
-              aria-label="Seek"
+              aria-label="Seek video progress"
+              className="scrub"
             />
-            <div className="mt-1.5 flex items-center justify-between text-[11px] text-white/85 tabular-nums">
-              <button type="button" onClick={togglePlay} aria-label={isPlaying ? 'Pause' : 'Play'}>
-                {isPlaying ? (
-                  <Pause className="h-3.5 w-3.5" />
-                ) : (
-                  <Play className="h-3.5 w-3.5 fill-current" />
-                )}
+
+            {/* Time readout and action icons */}
+            <div className="mt-2 flex items-center justify-between text-[11px] font-mono text-white/90">
+              <button
+                type="button"
+                onClick={togglePlay}
+                className="press p-1 hover:text-white"
+                aria-label={isPlaying ? 'Pause' : 'Play'}
+              >
+                {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 fill-current" />}
               </button>
-              <span>
+
+              <span className="tabular-nums tracking-wider text-[10px]">
                 {formatTime(currentTime)} / {formatTime(duration)}
               </span>
-              <button type="button" onClick={toggleFullscreen} aria-label="Fullscreen">
+
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className="press p-1 hover:text-white"
+                aria-label="Toggle Fullscreen"
+              >
                 <Maximize className="h-3.5 w-3.5" />
               </button>
             </div>
@@ -213,12 +269,34 @@ export default function VideoPlayer({
         </div>
       </div>
 
-      <div className="mt-3 flex items-center gap-4 text-[13px]">
-        <button type="button" onClick={handleDownload} disabled={isDownloading} className="press underline decoration-[var(--rule)] underline-offset-4">
-          {isDownloading ? 'Saving…' : 'Download'}
+      {/* Control Actions Pill */}
+      <div className="mt-3 flex items-center gap-2 font-mono text-[11px]">
+        <button
+          type="button"
+          onClick={handleDownload}
+          disabled={isDownloading}
+          className="press px-3 py-1.5 rounded-lg border border-[var(--rule)] bg-[var(--paper-elevated)] hover:border-[var(--ink)] text-[var(--ink)] flex items-center gap-1.5 transition-colors disabled:opacity-50"
+        >
+          <Download className={`h-3 w-3 ${isDownloading ? 'animate-bounce' : ''}`} />
+          <span>{isDownloading ? 'SAVING...' : 'MP4 EXPORT'}</span>
         </button>
-        <button type="button" onClick={handleCopy} className="press text-[var(--ink-soft)] underline decoration-[var(--rule)] underline-offset-4">
-          {isCopied ? 'Copied' : 'Copy link'}
+
+        <button
+          type="button"
+          onClick={handleCopyLink}
+          className="press px-3 py-1.5 rounded-lg border border-[var(--rule)] bg-[var(--paper-elevated)] hover:border-[var(--ink)] text-[var(--ink-soft)] hover:text-[var(--ink)] flex items-center gap-1.5 transition-colors"
+        >
+          {isCopied ? (
+            <>
+              <Check className="h-3 w-3 text-emerald-500" />
+              <span className="text-emerald-500 font-bold">COPIED</span>
+            </>
+          ) : (
+            <>
+              <Copy className="h-3 w-3" />
+              <span>COPY LINK</span>
+            </>
+          )}
         </button>
       </div>
     </div>

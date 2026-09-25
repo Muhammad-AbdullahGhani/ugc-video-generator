@@ -1,40 +1,44 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { useSession, signOut } from 'next-auth/react';
-import Image from 'next/image';
+import { useSession } from 'next-auth/react';
 import {
   ArrowUp,
-  Layers,
-  Plus,
-  LogOut,
-  ExternalLink,
   Globe,
   Loader2,
   Film,
+  ExternalLink,
+  RotateCcw,
 } from 'lucide-react';
-import { ChatMessage, StreamEvent, SavedVideo } from '@/types/chat';
+import { ChatMessage, StreamEvent } from '@/types/chat';
 import {
   hostLabel,
   isReelMessage,
-  deskStatus,
-  isCutting,
   readableReply,
 } from '@/lib/desk-copy';
-import SignInScreen from '@/components/SignInScreen';
 import Stage from '@/components/Stage';
 import EmptyState from '@/components/EmptyState';
 import PipelineTracker from '@/components/PipelineTracker';
-import UserVideosDrawer from '@/components/UserVideosDrawer';
 
-export default function ChatInterface() {
-  const { data: session, status } = useSession();
+interface ChatInterfaceProps {
+  onOpenArchive: () => void;
+  onOpenAuthModal: () => void;
+  initialPrompt?: string | null;
+  onClearInitialPrompt?: () => void;
+}
+
+export default function ChatInterface({
+  onOpenArchive,
+  onOpenAuthModal,
+  initialPrompt,
+  onClearInitialPrompt,
+}: ChatInterfaceProps) {
+  const { data: session } = useSession();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
-  const [mobileTab, setMobileTab] = useState<'desk' | 'stage'>('desk');
+  const [mobileTab, setMobileTab] = useState<'stage' | 'desk'>('desk');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -92,6 +96,7 @@ export default function ChatInterface() {
     [...messages].reverse().find(isReelMessage) ||
     null;
 
+  // Send message function connecting to live SSE /api/chat
   const sendMessage = useCallback(
     async (textToSend?: string) => {
       const text = (textToSend || input).trim();
@@ -262,6 +267,18 @@ export default function ChatInterface() {
     [input, loading, messages]
   );
 
+  // Consume initial prompt if passed from Landing Page
+  useEffect(() => {
+    if (initialPrompt && initialPrompt.trim()) {
+      const promptToRun = initialPrompt;
+      onClearInitialPrompt?.();
+      const timer = setTimeout(() => {
+        sendMessage(promptToRun);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [initialPrompt, sendMessage, onClearInitialPrompt]);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -281,22 +298,6 @@ export default function ChatInterface() {
     inputRef.current?.focus();
   };
 
-  const handleSelectSavedVideo = (video: SavedVideo) => {
-    const historicalMessage: ChatMessage = {
-      id: `saved-${video.id}`,
-      sender: 'assistant',
-      text: `Reel for ${video.detectedUrl}.`,
-      detectedUrl: video.detectedUrl,
-      blueprint: video.blueprint,
-      videoUrl: video.videoUrl,
-      createdAt: video.createdAt,
-      rationale: video.rationale || video.blueprint?.rationale,
-    };
-    setMessages((prev) => [...prev, historicalMessage]);
-    setSelectedMessageId(historicalMessage.id);
-    setMobileTab('stage');
-  };
-
   const resetChat = () => {
     setMessages([]);
     setSelectedMessageId(null);
@@ -305,121 +306,46 @@ export default function ChatInterface() {
     } catch {}
   };
 
-  // If user is unauthenticated, show the dedicated branded Sign In screen
-  if (status === 'unauthenticated') {
-    return <SignInScreen />;
-  }
-
-  // Loading session state
-  if (status === 'loading') {
-    return (
-      <div className="h-dvh bg-[var(--paper)] text-[var(--ink)] flex flex-col items-center justify-center font-sans">
-        <span className="wordmark text-[18px]">ReelForge</span>
-        <p className="text-[13px] text-[var(--ink-soft)] mt-1">Starting studio…</p>
-      </div>
-    );
-  }
-
-  const working = isCutting(activeReelMessage);
-
   return (
-    <div className="h-dvh flex flex-col bg-[var(--paper)] text-[var(--ink)] font-sans overflow-hidden">
-      {/* Top Navbar */}
-      <header className="flex-none h-14 border-b border-[var(--rule)] px-4 sm:px-6 flex items-center justify-between z-20">
-        <div className="flex items-baseline gap-2.5">
-          <span className="wordmark text-[16px]">ReelForge</span>
-          <span className="text-[12px] text-[var(--ink-soft)] hidden sm:inline">
-            {working ? `${deskStatus(activeReelMessage)}…` : deskStatus(activeReelMessage)}
-          </span>
-        </div>
-
-        {/* Mobile View Toggle */}
-        <div className="flex lg:hidden items-center rounded-lg border border-[var(--rule)] p-0.5 text-[12px]">
+    <div className="flex-1 min-h-0 flex flex-col bg-[var(--paper)] text-[var(--ink)] font-sans overflow-hidden">
+      {/* Mobile Workbench Mode Switcher */}
+      <div className="lg:hidden flex items-center justify-between border-b border-[var(--rule)] px-4 py-2 bg-[var(--paper-subtle)] font-mono text-[12px]">
+        <span className="text-[var(--ink-muted)]">VIEW MODE:</span>
+        <div className="flex items-center rounded-lg border border-[var(--rule)] p-0.5 bg-[var(--paper-elevated)]">
           <button
             type="button"
             onClick={() => setMobileTab('desk')}
-            className={`press px-3 py-1 rounded-md transition-colors ${
+            className={`px-3 py-1 rounded text-[11px] font-bold ${
               mobileTab === 'desk'
-                ? 'bg-[var(--ink)] text-[var(--paper)] font-medium'
+                ? 'bg-[var(--ink)] text-[var(--paper)]'
                 : 'text-[var(--ink-soft)]'
             }`}
           >
-            Desk
+            DESK
           </button>
           <button
             type="button"
             onClick={() => setMobileTab('stage')}
-            className={`press px-3 py-1 rounded-md flex items-center gap-1.5 transition-colors ${
+            className={`px-3 py-1 rounded text-[11px] font-bold flex items-center gap-1.5 ${
               mobileTab === 'stage'
-                ? 'bg-[var(--ink)] text-[var(--paper)] font-medium'
+                ? 'bg-[var(--ink)] text-[var(--paper)]'
                 : 'text-[var(--ink-soft)]'
             }`}
           >
-            <span>Reel</span>
+            <span>STAGE</span>
             {activeReelMessage?.videoUrl && (
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--mark)]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
             )}
           </button>
         </div>
+      </div>
 
-        {/* Header Actions */}
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setIsDrawerOpen(true)}
-            className="press text-[13px] text-[var(--ink-soft)] hover:text-[var(--ink)] flex items-center gap-1.5"
-            title="Saved reels"
-          >
-            <Layers className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Saved reels</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={resetChat}
-            className="press text-[13px] text-[var(--ink-soft)] hover:text-[var(--ink)] flex items-center gap-1"
-            title="New session"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">New</span>
-          </button>
-
-          {/* Account Profile / Sign Out */}
-          <div className="flex items-center gap-2 pl-2 border-l border-[var(--rule)]">
-            {session?.user?.image ? (
-              <Image
-                src={session.user.image}
-                alt={session.user.name || 'User'}
-                width={26}
-                height={26}
-                unoptimized
-                className="h-6 w-6 rounded-full object-cover border border-[var(--rule)]"
-              />
-            ) : (
-              <div className="h-6 w-6 rounded-full border border-[var(--rule)] grid place-items-center text-[11px] font-medium text-[var(--ink)]">
-                {session?.user?.name ? session.user.name.charAt(0).toUpperCase() : 'U'}
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={() => signOut()}
-              className="press p-1 text-[var(--ink-soft)] hover:text-[var(--mark)] transition-colors"
-              title="Sign out"
-              aria-label="Sign out"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Studio Workbench */}
+      {/* Main Studio Workbench (Asymmetrical split) */}
       <main className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
-        {/* Left Side: Stage (Persistent workbench on desktop, toggleable on mobile) */}
+        {/* Left Side: Stage (Persistent video canvas & telemetry) */}
         <section
           aria-label="Reel Stage"
-          className={`flex-1 min-h-0 overflow-y-auto lg:border-r border-[var(--rule)] ${
+          className={`flex-1 min-h-0 overflow-y-auto overscroll-contain lg:border-r border-[var(--rule)] bg-[var(--paper)] ${
             mobileTab === 'stage' ? 'flex' : 'hidden lg:flex'
           }`}
         >
@@ -432,15 +358,55 @@ export default function ChatInterface() {
           />
         </section>
 
-        {/* Right Side: Conversation & Desk */}
+        {/* Right Side: Conversation Desk & Telemetry Log */}
         <section
           aria-label="Conversation Desk"
-          className={`w-full lg:w-[440px] xl:w-[480px] shrink-0 min-h-0 flex flex-col bg-[var(--paper)] ${
+          className={`w-full lg:w-[460px] xl:w-[500px] shrink-0 min-h-0 flex flex-col bg-[var(--paper-elevated)] border-l lg:border-l-0 border-[var(--rule)] ${
             mobileTab === 'desk' ? 'flex' : 'hidden lg:flex'
           }`}
         >
-          {/* Messages Scroll Area */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-4">
+          {/* Top Desk Toolbar */}
+          <div className="flex-none px-4 py-2.5 border-b border-[var(--rule)] flex items-center justify-between font-mono text-[11px] text-[var(--ink-muted)]">
+            <div className="flex items-center gap-2">
+              <span className="text-[var(--accent)] font-bold">[ DESK // 02 ]</span>
+              <span>INTERACTIVE TERMINAL</span>
+            </div>
+            <div className="flex items-center gap-2.5">
+              {!session?.user && (
+                <button
+                  type="button"
+                  onClick={onOpenAuthModal}
+                  className="press text-[10px] text-[var(--accent)] hover:underline font-bold"
+                  title="Authenticate session"
+                >
+                  SIGN IN
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onOpenArchive}
+                className="press text-[11px] hover:text-[var(--ink)] flex items-center gap-1"
+                title="Open saved reels"
+              >
+                <Film className="h-3 w-3" />
+                <span>ARCHIVE</span>
+              </button>
+              {messages.length > 0 && (
+                <button
+                  type="button"
+                  onClick={resetChat}
+                  className="press text-[11px] hover:text-[var(--ink)] flex items-center gap-1 border-l border-[var(--rule)] pl-2"
+                  title="Clear current thread"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  <span>CLEAR</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Messages Feed */}
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 space-y-4">
             {messages.length === 0 ? (
               <EmptyState onSelectPrompt={sendMessage} disabled={loading} />
             ) : (
@@ -455,32 +421,35 @@ export default function ChatInterface() {
                       msg.sender === 'user' ? 'items-end' : 'items-start'
                     }`}
                   >
-                    {/* User Message */}
+                    {/* User Prompt Message */}
                     {msg.sender === 'user' && (
-                      <div className="max-w-[85%] rounded-2xl rounded-tr-xs bg-[var(--ink)] text-[var(--paper)] px-3.5 py-2.5 text-[14px] leading-relaxed">
+                      <div className="max-w-[85%] rounded-2xl rounded-tr-xs bg-[var(--ink)] text-[var(--paper)] px-4 py-2.5 text-[14px] leading-relaxed font-mono">
                         {msg.text}
                       </div>
                     )}
 
                     {/* Assistant Message */}
                     {msg.sender === 'assistant' && (
-                      <div className="w-full max-w-[95%] space-y-2.5">
-                        {/* Conversational Text */}
+                      <div className="w-full max-w-[95%] space-y-3">
+                        {/* Text Reply */}
                         {msg.text && (
-                          <p className="text-[14px] leading-relaxed text-[var(--ink)]">
-                            {readableReply(msg.text)}
-                          </p>
+                          <div className="p-3.5 rounded-xl border border-[var(--rule)] bg-[var(--paper)] text-[13px] leading-relaxed text-[var(--ink)] space-y-1">
+                            <span className="font-mono text-[10px] text-[var(--accent)] font-bold block uppercase tracking-wider">
+                              [ REELFORGE RESPONSE ]
+                            </span>
+                            <p>{readableReply(msg.text)}</p>
+                          </div>
                         )}
 
-                        {/* External URL badge if detected */}
+                        {/* External URL badge */}
                         {msg.detectedUrl && (
-                          <div className="flex items-center gap-1.5 text-[12px] text-[var(--ink-soft)]">
+                          <div className="flex items-center gap-1.5 font-mono text-[11px] text-[var(--ink-muted)]">
                             <Globe className="h-3 w-3" />
                             <a
                               href={msg.detectedUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="press truncate underline decoration-[var(--rule)] underline-offset-2 hover:text-[var(--ink)] inline-flex items-center gap-0.5"
+                              className="press truncate underline hover:text-[var(--ink)] inline-flex items-center gap-0.5"
                             >
                               <span>{hostLabel(msg.detectedUrl)}</span>
                               <ExternalLink className="h-2.5 w-2.5" />
@@ -488,9 +457,9 @@ export default function ChatInterface() {
                           </div>
                         )}
 
-                        {/* Pipeline Tracker when steps exist */}
+                        {/* Pipeline Tracker */}
                         {((msg.steps && msg.steps.length > 0) || msg.isStreaming) && (
-                          <div className="pt-1">
+                          <div>
                             <PipelineTracker
                               steps={msg.steps || []}
                               activeStepId={msg.activeStepId}
@@ -502,13 +471,13 @@ export default function ChatInterface() {
                           </div>
                         )}
 
-                        {/* Reel Card Focus Action */}
+                        {/* Reel Focus Card */}
                         {isReel && msg.videoUrl && (
-                          <div className="flex items-center justify-between rounded-xl border border-[var(--rule)] p-2.5 text-[12px]">
+                          <div className="flex items-center justify-between rounded-xl border border-[var(--rule)] bg-[var(--paper)] p-3 text-[12px] font-mono">
                             <div className="flex items-center gap-2">
-                              <Film className="h-3.5 w-3.5 text-[var(--ink)]" />
-                              <span className="font-medium text-[var(--ink)] truncate max-w-[170px]">
-                                {hostLabel(msg.detectedUrl) || '9:16 Reel'}
+                              <Film className="h-3.5 w-3.5 text-[var(--accent)]" />
+                              <span className="font-bold text-[var(--ink)] truncate max-w-[180px]">
+                                {hostLabel(msg.detectedUrl) || '9:16 REEL'}
                               </span>
                             </div>
 
@@ -518,11 +487,13 @@ export default function ChatInterface() {
                                 setSelectedMessageId(msg.id);
                                 setMobileTab('stage');
                               }}
-                              className={`press underline underline-offset-4 text-[12px] ${
-                                isSelected ? 'font-medium text-[var(--ink)]' : 'text-[var(--ink-soft)]'
+                              className={`press underline text-[11px] font-bold ${
+                                isSelected
+                                  ? 'text-[var(--accent)]'
+                                  : 'text-[var(--ink-muted)] hover:text-[var(--ink)]'
                               }`}
                             >
-                              {isSelected ? 'Viewing on Stage' : 'View on Stage →'}
+                              {isSelected ? 'INSPECTING ON STAGE' : 'VIEW ON STAGE →'}
                             </button>
                           </div>
                         )}
@@ -533,63 +504,55 @@ export default function ChatInterface() {
               })
             )}
 
-            {/* Waiting indicator when query is being analyzed */}
-            {loading && messages.length > 0 && messages[messages.length - 1]?.sender === 'user' && (
-              <div className="text-[13px] text-[var(--ink-soft)] flex items-center gap-2">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span>Working out what it is…</span>
-              </div>
-            )}
+            {/* Waiting Spinner */}
+            {loading &&
+              messages.length > 0 &&
+              messages[messages.length - 1]?.sender === 'user' && (
+                <div className="font-mono text-[12px] text-[var(--ink-muted)] flex items-center gap-2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--accent)]" />
+                  <span>ANALYZING TARGET URL & VALUE PROPS...</span>
+                </div>
+              )}
 
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Bottom Prompt Desk */}
-          <footer className="flex-none border-t border-[var(--rule)] p-3 sm:p-4 bg-[var(--paper)]">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 rounded-xl border border-[var(--rule)] bg-transparent focus-within:border-[var(--ink)] p-1.5 pl-3 transition-colors">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Paste a product link (e.g. calai.app) or ask a question…"
-                  disabled={loading}
-                  className="flex-1 bg-transparent text-[14px] text-[var(--ink)] placeholder-[var(--ink-soft)] focus:outline-none disabled:opacity-50"
-                />
+          {/* Bottom Prompt Desk Bar */}
+          <footer className="flex-none border-t border-[var(--rule)] p-3 sm:p-4 bg-[var(--paper-elevated)] space-y-2">
+            <div className="flex items-center gap-2 rounded-xl border border-[var(--rule)] bg-[var(--paper)] focus-within:border-[var(--ink)] p-1.5 pl-3 transition-colors">
+              <input
+                ref={inputRef}
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Paste product link (e.g. calai.app) or ask a question..."
+                disabled={loading}
+                className="flex-1 bg-transparent font-mono text-[13px] text-[var(--ink)] placeholder-[var(--ink-muted)] focus:outline-none disabled:opacity-50"
+              />
 
-                <button
-                  type="button"
-                  onClick={() => sendMessage()}
-                  disabled={!input.trim() || loading}
-                  className="press shrink-0 grid h-8 w-8 place-items-center rounded-lg bg-[var(--ink)] text-[var(--paper)] disabled:opacity-30 transition-opacity"
-                  aria-label="Send message"
-                >
-                  {loading ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-current" />
-                  ) : (
-                    <ArrowUp className="h-4 w-4" />
-                  )}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => sendMessage()}
+                disabled={!input.trim() || loading}
+                className="press shrink-0 grid h-8 w-8 place-items-center rounded-lg bg-[var(--ink)] text-[var(--paper)] hover:bg-[var(--accent)] disabled:opacity-30 transition-colors"
+                aria-label="Send message"
+              >
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-current" />
+                ) : (
+                  <ArrowUp className="h-4 w-4" />
+                )}
+              </button>
+            </div>
 
-              <div className="flex items-center justify-between text-[11px] text-[var(--ink-soft)] px-1">
-                <span>Enter to assemble</span>
-                <span>Zero-cost • 9:16 vertical • 5 to 10s</span>
-              </div>
+            <div className="flex items-center justify-between font-mono text-[10px] text-[var(--ink-muted)] px-1">
+              <span>PRESS ENTER TO ASSEMBLE</span>
+              <span>1080×1920 • 30FPS • 5–10S</span>
             </div>
           </footer>
         </section>
       </main>
-
-      {/* User Saved Videos Drawer */}
-      <UserVideosDrawer
-        isOpen={isDrawerOpen}
-        onClose={() => setIsDrawerOpen(false)}
-        onSelectVideo={handleSelectSavedVideo}
-        userEmail={session?.user?.email}
-      />
     </div>
   );
 }
