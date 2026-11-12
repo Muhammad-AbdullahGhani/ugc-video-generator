@@ -1,47 +1,66 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
+import { randomUUID } from "crypto";
+import { env } from "@/lib/env";
+import { createLogger } from "@/lib/logger";
 
-const hasGoogleAuth = Boolean(
-  process.env.GOOGLE_CLIENT_ID &&
-  process.env.GOOGLE_CLIENT_SECRET &&
-  process.env.GOOGLE_CLIENT_ID.trim().length > 0 &&
-  process.env.GOOGLE_CLIENT_SECRET.trim().length > 0
-);
+const log = createLogger("auth");
+
+/**
+ * The demo-guest provider authenticates anyone as any identity without
+ * verification. It exists so the demo can be clicked through without Google
+ * credentials, and `lib/env.ts` keeps it off unless explicitly enabled — and
+ * refuses to enable it in production at all.
+ *
+ * Guests get a random opaque id (not a timestamp, which collides and rotates on
+ * every sign-in) inside a reserved, unroutable email namespace, so a guest
+ * session can never collide with or impersonate a real Google account.
+ */
+const demoGuestProvider = Credentials({
+  id: "demo-guest",
+  name: "Demo Guest",
+  credentials: {
+    name: { label: "Name", type: "text", placeholder: "Creator Guest" },
+  },
+  async authorize(credentials) {
+    const requested = typeof credentials?.name === "string" ? credentials.name.trim() : "";
+    const name = requested.slice(0, 40) || "Creator Guest";
+    const id = `guest_${randomUUID()}`;
+
+    log.info("guest session issued", { id });
+
+    return {
+      id,
+      name,
+      // Reserved namespace: `.invalid` is guaranteed never to resolve (RFC 2606),
+      // so a guest identity cannot shadow a real user's email.
+      email: `${id}@guest.invalid`,
+      image: null,
+    };
+  },
+});
+
+if (env.auth.demoGuestEnabled) {
+  log.warn("demo-guest provider is ENABLED — anyone can sign in without verification");
+}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
-    ...(hasGoogleAuth
+    ...(env.auth.googleConfigured
       ? [
           Google({
-            clientId: process.env.GOOGLE_CLIENT_ID!.trim(),
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET!.trim(),
+            clientId: env.auth.googleClientId!,
+            clientSecret: env.auth.googleClientSecret!,
           }),
         ]
       : []),
-    Credentials({
-      id: "demo-guest",
-      name: "Demo Guest",
-      credentials: {
-        name: { label: "Name", type: "text", placeholder: "Creator Guest" },
-        email: { label: "Email", type: "email", placeholder: "guest@example.com" },
-      },
-      async authorize(credentials) {
-        const email = (credentials?.email as string) || "guest@reelforge.ai";
-        const name = (credentials?.name as string) || "Creator Guest";
-        return {
-          id: "guest-user-" + Date.now(),
-          name,
-          email,
-          image: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
-        };
-      },
-    }),
+    ...(env.auth.demoGuestEnabled ? [demoGuestProvider] : []),
   ],
-  secret:
-    process.env.NEXTAUTH_SECRET ||
-    process.env.AUTH_SECRET ||
-    "reelforge-dev-secret-key-at-least-32-chars-long",
+  // No fallback. A hardcoded default secret lets anyone holding the source forge
+  // a session; `lib/env.ts` fails the boot instead.
+  secret: env.auth.secret,
+  session: { strategy: "jwt" },
   callbacks: {
     async session({ session, token }) {
       if (session?.user && token?.sub) {
@@ -50,7 +69,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return session;
     },
     async jwt({ token, user }) {
-      if (user) {
+      if (user?.id) {
         token.sub = user.id;
       }
       return token;
@@ -60,3 +79,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     signIn: "/",
   },
 });
+
+/**
+ * The single source of truth for "who is this request".
+ *
+ * Returns the stable provider subject only. Never fall back to email: emails are
+ * user-supplied on some providers, and a dual id-or-email key is how cross-user
+ * reads happen.
+ */
+export async function currentUserId(): Promise<string | null> {
+  try {
+    const session = await auth();
+    return session?.user?.id ?? null;
+  } catch (err) {
+    log.warn("session resolution failed", { err: err as Error });
+    return null;
+  }
+}

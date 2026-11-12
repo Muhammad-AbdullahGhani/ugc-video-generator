@@ -25,6 +25,7 @@ export default function SignInModal({
   const [loadingGoogle, setLoadingGoogle] = useState(false);
   const [loadingGuest, setLoadingGuest] = useState(false);
   const [googleConfigured, setGoogleConfigured] = useState<boolean | null>(null);
+  const [guestEnabled, setGuestEnabled] = useState(false);
   const [showConfigSnippet, setShowConfigSnippet] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -35,8 +36,14 @@ export default function SignInModal({
         if (typeof data.googleConfigured === 'boolean') {
           setGoogleConfigured(data.googleConfigured);
         }
+        // The guest provider is disabled by default and never runs in
+        // production, so the button only appears when the server offers it.
+        setGuestEnabled(data.guestEnabled === true);
       })
-      .catch(() => setGoogleConfigured(false));
+      .catch(() => {
+        setGoogleConfigured(false);
+        setGuestEnabled(false);
+      });
   }, []);
 
   if (!isOpen) return null;
@@ -62,7 +69,6 @@ export default function SignInModal({
       setLoadingGuest(true);
       await signIn('demo-guest', {
         name: 'Creator Guest',
-        email: 'guest@reelforge.ai',
         callbackUrl: '/',
       });
       onSuccess?.();
@@ -115,30 +121,35 @@ export default function SignInModal({
 
         {/* Action Buttons */}
         <div className="space-y-3">
-          {/* Instant Demo Access (Recommended for Technical Assessment) */}
-          <button
-            type="button"
-            onClick={handleGuestSignIn}
-            disabled={loadingGuest || loadingGoogle}
-            className="press w-full rounded-xl bg-[var(--ink)] text-[var(--paper)] py-3.5 px-4 text-[13px] font-mono font-medium flex items-center justify-between hover:bg-[var(--accent)] transition-colors disabled:opacity-50 group"
-          >
-            <div className="flex items-center gap-2.5">
-              <Sparkles className="h-4 w-4 text-[var(--accent)] group-hover:text-white transition-colors" />
-              <span>EXPLORE AS DEMO CREATOR</span>
-            </div>
-            {loadingGuest ? (
-              <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <ArrowRight className="h-4 w-4 transform group-hover:translate-x-1 transition-transform" />
-            )}
-          </button>
+          {/* Demo access. Only offered when the server has the guest provider
+              enabled, which never happens in production. */}
+          {guestEnabled && (
+            <>
+              <button
+                type="button"
+                onClick={handleGuestSignIn}
+                disabled={loadingGuest || loadingGoogle}
+                className="press w-full rounded-xl bg-[var(--ink)] text-[var(--paper)] py-3.5 px-4 text-[13px] font-mono font-medium flex items-center justify-between hover:bg-[var(--accent)] transition-colors disabled:opacity-50 group"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Sparkles className="h-4 w-4 text-[var(--accent)] group-hover:text-white transition-colors" />
+                  <span>EXPLORE AS DEMO CREATOR</span>
+                </div>
+                {loadingGuest ? (
+                  <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <ArrowRight className="h-4 w-4 transform group-hover:translate-x-1 transition-transform" />
+                )}
+              </button>
 
-          <div className="relative flex items-center justify-center py-1">
-            <div className="border-t border-[var(--rule)] w-full" />
-            <span className="bg-[var(--paper-elevated)] px-3 text-[10px] font-mono uppercase tracking-wider text-[var(--ink-muted)]">
-              OR CONTINUE WITH OAUTH
-            </span>
-          </div>
+              <div className="relative flex items-center justify-center py-1">
+                <div className="border-t border-[var(--rule)] w-full" />
+                <span className="bg-[var(--paper-elevated)] px-3 text-[10px] font-mono uppercase tracking-wider text-[var(--ink-muted)]">
+                  OR CONTINUE WITH OAUTH
+                </span>
+              </div>
+            </>
+          )}
 
           {/* Google Sign In */}
           <button

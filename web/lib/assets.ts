@@ -1,49 +1,85 @@
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
+import { createLogger } from './logger';
+
+const log = createLogger('assets');
 
 export interface AvailableAssets {
   videos: string[];
   audios: string[];
 }
 
-export type ProductCategory =
-  | 'fitness'
-  | 'saas_dev'
-  | 'food_beverage'
-  | 'productivity'
-  | 'ecommerce'
-  | 'fintech'
-  | 'general';
+/** Single source of truth for the category enum — the validator checks against this. */
+export const PRODUCT_CATEGORIES = [
+  'fitness',
+  'saas_dev',
+  'food_beverage',
+  'productivity',
+  'ecommerce',
+  'fintech',
+  'general',
+] as const;
 
-export function getAssetsDir(): string {
+export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];
+
+let assetsDirCache: string | null = null;
+
+async function exists(target: string): Promise<boolean> {
+  try {
+    await fs.access(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve the bundled asset directory once per process. The result cannot change
+ * while the server runs, and probing the filesystem on every request was pure
+ * blocking I/O on the hot path.
+ */
+export async function getAssetsDir(): Promise<string> {
+  if (assetsDirCache) return assetsDirCache;
+
   const candidates = [
     path.join(process.cwd(), 'public', 'assets'),
     path.join(process.cwd(), 'web', 'public', 'assets'),
   ];
+
   for (const dir of candidates) {
-    if (fs.existsSync(dir)) {
+    if (await exists(dir)) {
+      assetsDirCache = dir;
       return dir;
     }
   }
-  return path.join(process.cwd(), 'public', 'assets');
+
+  assetsDirCache = candidates[0];
+  return assetsDirCache;
 }
 
-export function getAvailableAssets(): AvailableAssets {
-  const assetsDir = getAssetsDir();
+let availableCache: { value: AvailableAssets; at: number } | null = null;
+const ASSET_CACHE_MS = 60_000;
+
+export async function getAvailableAssets(): Promise<AvailableAssets> {
+  const now = Date.now();
+  if (availableCache && now - availableCache.at < ASSET_CACHE_MS) {
+    return availableCache.value;
+  }
+
+  const assetsDir = await getAssetsDir();
   let videos: string[] = [];
   let audios: string[] = [];
 
   try {
-    if (fs.existsSync(assetsDir)) {
-      const files = fs.readdirSync(assetsDir);
-      videos = files.filter((f) => f.toLowerCase().endsWith('.mp4'));
-      audios = files.filter((f) => f.toLowerCase().endsWith('.mp3'));
-    }
+    const files = await fs.readdir(/* turbopackIgnore: true */ assetsDir);
+    videos = files.filter((f) => f.toLowerCase().endsWith('.mp4'));
+    audios = files.filter((f) => f.toLowerCase().endsWith('.mp3'));
   } catch (err) {
-    console.error('Error scanning public/assets directory:', err);
+    log.error('could not scan the assets directory', { assetsDir, err: err as Error });
   }
 
-  return { videos, audios };
+  availableCache = { value: { videos, audios }, at: now };
+  return availableCache.value;
 }
 
 export type MemeMood = 'surprise' | 'hype' | 'facepalm' | 'focused';

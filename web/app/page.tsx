@@ -23,8 +23,9 @@ export default function Home() {
       const res = await fetch('/api/videos');
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data.videos)) {
-          setSavedVideosCount(data.videos.length);
+        // `total` is the full count; `videos` is only the first page.
+        if (typeof data.total === 'number') {
+          setSavedVideosCount(data.total);
         }
       }
     } catch {

@@ -1,65 +1,55 @@
-import fs from 'fs';
+import { createReadStream } from 'fs';
+import { stat } from 'fs/promises';
 import { put } from '@vercel/blob';
+import { env } from './env';
+import { AppError } from './errors';
+import { createLogger } from './logger';
+import { signVideoPath } from './signed-url';
+
+const log = createLogger('storage');
 
 /**
- * Stores the rendered video file and returns a public URL.
- * Strategy:
- * 1. If BLOB_READ_WRITE_TOKEN is configured, upload directly to Vercel Blob.
- * 2. Otherwise, upload to zero-cost cloud storage (Catbox) for a permanent public HTTPS URL with range streaming.
- * 3. Fallback to inlined Base64 Data URI (safe for all serverless environments with zero external dependencies).
+ * Persist a rendered video and return the URL the client should play.
+ *
+ * Two paths, both under our control:
+ *   1. Vercel Blob when a token is configured (required in production).
+ *   2. A signed, locally served URL for development.
+ *
+ * There is deliberately no third-party fallback. The previous implementation
+ * uploaded every user's video to catbox.moe — an anonymous public file host — on
+ * a permanent URL that cannot be deleted and is covered by no agreement. "Zero
+ * config" is not worth publishing a customer's unreleased marketing asset.
  */
-export async function storeVideo(
-  filePath: string,
-  filename: string
-): Promise<string> {
-  const fileBuffer = fs.readFileSync(filePath);
-
-  // 1. Vercel Blob (if token provided in Vercel project environment)
-  if (process.env.BLOB_READ_WRITE_TOKEN) {
+export async function storeVideo(filePath: string, filename: string): Promise<string> {
+  if (env.storage.configured) {
     try {
-      console.log(`[Storage] Uploading ${filename} to Vercel Blob...`);
-      const blob = await put(`videos/${filename}`, fileBuffer, {
+      const { size } = await stat(filePath);
+      log.info('uploading to blob storage', { filename, size });
+
+      // Stream rather than buffer: a readFileSync here costs one full video of
+      // heap per concurrent render.
+      const blob = await put(`videos/${filename}`, createReadStream(filePath), {
         access: 'public',
         contentType: 'video/mp4',
+        token: env.storage.blobToken,
       });
-      console.log(`[Storage] Successfully uploaded to Vercel Blob: ${blob.url}`);
+
+      log.info('blob upload complete', { filename, url: blob.url });
       return blob.url;
-    } catch (blobErr) {
-      console.warn('[Storage] Vercel Blob upload failed, falling back:', blobErr);
+    } catch (err) {
+      // In production there is nowhere else to go, and silently degrading to a
+      // worse location is how data ends up somewhere nobody chose.
+      throw new AppError('STORAGE_FAILED', `blob upload failed for ${filename}`, err);
     }
   }
 
-  // 2. Zero-config cloud storage (Catbox)
-  try {
-    console.log(
-      `[Storage] Uploading ${filename} (${fileBuffer.length} bytes) to zero-config cloud storage...`
-    );
-    const formData = new FormData();
-    formData.append('reqtype', 'fileupload');
-    formData.append(
-      'fileToUpload',
-      new Blob([fileBuffer], { type: 'video/mp4' }),
-      filename
-    );
-
-    const res = await fetch('https://catbox.moe/user/api.php', {
-      method: 'POST',
-      body: formData,
-      signal: AbortSignal.timeout(12000),
-    });
-
-    if (res.ok) {
-      const url = (await res.text()).trim();
-      if (url.startsWith('https://files.catbox.moe/')) {
-        console.log(`[Storage] Cloud storage upload succeeded: ${url}`);
-        return url;
-      }
-    }
-  } catch (cloudErr) {
-    console.warn('[Storage] Cloud storage upload failed or timed out:', cloudErr);
+  if (env.isProduction) {
+    // Unreachable: lib/env.ts refuses to boot a production build without a token.
+    throw new AppError('STORAGE_FAILED', 'no storage backend configured in production');
   }
 
-  // 3. Fallback: Base64 Data URI
-  console.log(`[Storage] Falling back to Base64 Data URI (${fileBuffer.length} bytes)...`);
-  return `data:video/mp4;base64,${fileBuffer.toString('base64')}`;
+  // Development: serve from the local render directory behind an HMAC-signed URL
+  // so the file is not readable by anyone who can guess a filename.
+  log.info('serving render locally (development)', { filename });
+  return signVideoPath(filename);
 }

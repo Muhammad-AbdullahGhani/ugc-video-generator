@@ -23,6 +23,8 @@
 # misc
 .DS_Store
 *.pem
+# Renders are written to .data/renders, never public/ (see lib/render-paths.ts).
+# These rules stay as a backstop for any stale local files.
 /public/renders/*.mp4
 !/public/renders/.gitkeep
 

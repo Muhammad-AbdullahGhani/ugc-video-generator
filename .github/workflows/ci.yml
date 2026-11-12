@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  verify:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # Fails on a high/critical advisory in the PRODUCTION tree. Dev-only
+      # advisories (test runner, bundler) are excluded deliberately: they are not
+      # part of the deployed artifact.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+        env:
+          # Build-time only. lib/env refuses to boot without a secret, which is
+          # the point — CI proves the app fails closed rather than defaulting.
+          AUTH_SECRET: ci-build-secret-not-used-at-runtime-32chars
+          NODE_ENV: development
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # .agent-logs/ is committed by project policy and captures terminal
+      # output, so the repo needs a scanner rather than a convention.
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
