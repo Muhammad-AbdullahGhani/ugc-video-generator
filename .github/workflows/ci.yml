@@ -40,13 +40,13 @@ jobs:
       - name: Test
         run: npm run test
 
+      # Deliberately no secrets and no NODE_ENV override. `next build` sets
+      # NODE_ENV=production itself (forcing development breaks the
+      # /_global-error prerender), and lib/env defers production-only checks
+      # past the build phase — so a green build here proves the app compiles
+      # without runtime secrets while still failing closed at boot.
       - name: Build
         run: npm run build
-        env:
-          # Build-time only. lib/env refuses to boot without a secret, which is
-          # the point — CI proves the app fails closed rather than defaulting.
-          AUTH_SECRET: ci-build-secret-not-used-at-runtime-32chars
-          NODE_ENV: development
 
   secrets:
     name: Secret scan
