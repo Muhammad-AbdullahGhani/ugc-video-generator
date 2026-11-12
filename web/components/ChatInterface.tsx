@@ -43,6 +43,11 @@ export default function ChatInterface({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const isHydratedRef = useRef(false);
+  // Lets us abort the in-flight generation; the server stops the encode when
+  // the stream is cancelled rather than rendering for nobody.
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const userKey = session?.user?.id || session?.user?.email || 'guest';
   const storageKey = `reelforge_chat_${userKey}`;
@@ -129,10 +134,15 @@ export default function ChatInterface({
       }
       setLoading(true);
 
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       try {
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({
             message: text,
             history: messages.slice(-6).map((m) => ({ sender: m.sender, text: m.text })),
@@ -245,6 +255,10 @@ export default function ChatInterface({
           }
         }
       } catch (err: unknown) {
+        // A cancel is our own doing, not a failure worth showing.
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return;
+        }
         const errorMsg = err instanceof Error ? err.message : 'Network error';
         setMessages((prev) =>
           prev.map((msg) =>
@@ -260,6 +274,7 @@ export default function ChatInterface({
           )
         );
       } finally {
+        if (abortRef.current === controller) abortRef.current = null;
         setLoading(false);
         setTimeout(() => inputRef.current?.focus(), 60);
       }

@@ -1,0 +1,22 @@
+# gitleaks configuration
+#
+# .agent-logs/ is committed deliberately (see AGENTS.md) and contains terminal
+# transcripts, which is exactly where a pasted key would end up. The default
+# rules run over everything; only documented placeholders are allowed through.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented placeholders, not real credentials"
+regexes = [
+  '''your_[a-z_]*(key|secret|id|token)[a-z_]*''',
+  '''your-google-client-id''',
+  '''GOCSPX-xxxx''',
+  '''generate_with_openssl_rand_base64_32''',
+  '''ci-build-secret-not-used-at-runtime-32chars''',
+  '''test-only-secret-not-used-outside-tests-0123456789''',
+]
+paths = [
+  '''web/\.env\.example''',
+]

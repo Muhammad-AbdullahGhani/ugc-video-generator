@@ -1,8 +1,21 @@
 /**
  * Real Page Metadata & Social Proof Extractor
- * Extracts OG tags, meta descriptions, theme colors, and social-proof stats
- * to deeply personalize the UGC video rather than using templated copy.
+ *
+ * Extracts OG tags, meta descriptions, theme colors, and social-proof stats to
+ * personalize the UGC video rather than using templated copy.
+ *
+ * Everything here parses attacker-controlled HTML, so every extracted value is
+ * treated as untrusted: the fetch goes through `safeFetchText` (SSRF guards +
+ * byte cap) and each field is length-bounded and shape-checked before it is
+ * returned. `themeColor` in particular reaches an FFmpeg filter graph later, so
+ * it is validated as strict hex here and again at the point of use.
  */
+
+import { assertPublicUrl, safeFetchText } from './safe-fetch';
+import { createLogger } from './logger';
+import { AppError } from './errors';
+
+const log = createLogger('metadata');
 
 export interface PageMetadata {
   ogTitle?: string;
@@ -15,106 +28,112 @@ export interface PageMetadata {
 const SOCIAL_PROOF_REGEX =
   /(?:\b(?:over|trusted by|more than|joined by)\s+)?(\d+(?:,\d+)*(?:\.\d+)?[kKmMbB]?\+?\s*(?:active\s+)?(?:users|customers|teams|companies|downloads|ratings|reviews|creators|calories\s+tracked|meals))\b|\b(4\.[6-9]|5\.0)\s*(?:stars?|\/5|out of 5)\b|\b(\d+x|\d+%\s*(?:faster|increase|growth|boost|cheaper|saved))\b/gi;
 
+const MAX_TITLE_CHARS = 120;
+const MAX_DESCRIPTION_CHARS = 400;
+const MAX_SOCIAL_PROOF_CHARS = 50;
+
+/** Only ever accept a strict 3/6/8-digit hex colour. */
+const HEX_COLOR = /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3}([0-9a-fA-F]{2})?)?$/;
+
+/** Collapse whitespace, decode the handful of entities that matter, bound length. */
+function clean(value: string | undefined, maxChars: number): string | undefined {
+  if (!value) return undefined;
+  const normalized = value
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return undefined;
+  return normalized.slice(0, maxChars);
+}
+
 export async function extractPageMetadata(
   url: string,
   fallbackMarkdown: string = ''
 ): Promise<PageMetadata> {
   let html = '';
-  let ogTitle: string | undefined;
-  let ogDescription: string | undefined;
-  let themeColor: string | undefined;
-  let socialProof: string | undefined;
-  let faviconUrl: string | undefined;
 
-  // 1. Attempt fast direct HTML fetch (3.5s timeout)
   try {
-    const res = await fetch(url, {
+    const validated = await assertPublicUrl(url);
+    const result = await safeFetchText(validated.toString(), {
+      timeoutMs: 3_500,
+      maxBytes: 1024 * 1024, // metadata lives in <head>; 1 MB is generous
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         Accept: 'text/html,application/xhtml+xml',
       },
-      signal: AbortSignal.timeout(3500),
     });
-
-    if (res.ok) {
-      html = await res.text();
-    }
+    if (result.ok) html = result.body;
   } catch (err) {
-    console.warn(`[MetadataExtractor] Direct HTML fetch timed out or blocked for ${url}:`, err);
+    // A blocked or unreachable page is normal here — Jina is the other half of
+    // the pair and may still succeed. Only re-throw an explicit policy refusal.
+    if (err instanceof AppError && err.code === 'URL_NOT_ALLOWED') throw err;
+    log.debug('direct html fetch failed, continuing with markdown fallback', {
+      url,
+      err: err as Error,
+    });
   }
 
-  // 2. Parse from HTML if available
+  const meta: PageMetadata = {};
+
   if (html) {
-    // Title
     const ogTitleMatch =
       html.match(/<meta\s+property=["']og:title["']\s+content=["']([^"']+)["']/i) ||
       html.match(/<meta\s+content=["']([^"']+)["']\s+property=["']og:title["']/i);
     const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-    ogTitle = ogTitleMatch?.[1] || titleMatch?.[1]?.trim();
+    meta.ogTitle = clean(ogTitleMatch?.[1] ?? titleMatch?.[1], MAX_TITLE_CHARS);
 
-    // Description
     const ogDescMatch =
       html.match(/<meta\s+property=["']og:description["']\s+content=["']([^"']+)["']/i) ||
       html.match(/<meta\s+name=["']description["']\s+content=["']([^"']+)["']/i);
-    ogDescription = ogDescMatch?.[1]?.trim();
+    meta.ogDescription = clean(ogDescMatch?.[1], MAX_DESCRIPTION_CHARS);
 
-    // Theme Color (brand color)
     const themeMatch = html.match(/<meta\s+name=["']theme-color["']\s+content=["']([^"']+)["']/i);
-    if (themeMatch && themeMatch[1]) {
-      const rawColor = themeMatch[1].trim();
-      if (/^#[0-9a-fA-F]{3,8}$/.test(rawColor)) {
-        themeColor = rawColor;
-      }
+    const rawColor = themeMatch?.[1]?.trim();
+    if (rawColor && HEX_COLOR.test(rawColor)) {
+      meta.themeColor = rawColor;
     }
 
-    // Favicon
     const iconMatch =
       html.match(/<link\s+[^>]*rel=["'](?:shortcut\s+)?icon["'][^>]*href=["']([^"']+)["']/i) ||
       html.match(/<link\s+[^>]*href=["']([^"']+)["'][^>]*rel=["'](?:shortcut\s+)?icon["']/i);
     if (iconMatch?.[1]) {
-      const href = iconMatch[1];
       try {
-        faviconUrl = new URL(href, url).toString();
+        const favicon = new URL(iconMatch[1], url);
+        if (favicon.protocol === 'https:' || favicon.protocol === 'http:') {
+          meta.faviconUrl = favicon.toString();
+        }
       } catch {
-        // Ignore malformed favicon url
+        // Malformed favicon href: not worth reporting.
       }
     }
 
-    // Social proof scan from HTML
-    const socialMatches = Array.from(html.matchAll(SOCIAL_PROOF_REGEX));
-    if (socialMatches.length > 0) {
-      // Pick the cleanest match
-      const candidates = socialMatches.map((m) => m[0].trim()).filter((s) => s.length > 3 && s.length < 50);
-      if (candidates.length > 0) {
-        socialProof = candidates[0];
-      }
-    }
+    meta.socialProof = firstSocialProof(html);
   }
 
-  // 3. Fallback to scraping Markdown (from Jina Reader)
-  if (!ogTitle && fallbackMarkdown) {
-    const headingMatch = fallbackMarkdown.match(/^#\s+(.+)$/m) || fallbackMarkdown.match(/Title:\s*(.+)$/m);
-    if (headingMatch) {
-      ogTitle = headingMatch[1].trim();
-    }
+  if (!meta.ogTitle && fallbackMarkdown) {
+    const headingMatch =
+      fallbackMarkdown.match(/^#\s+(.+)$/m) || fallbackMarkdown.match(/Title:\s*(.+)$/m);
+    meta.ogTitle = clean(headingMatch?.[1], MAX_TITLE_CHARS);
   }
 
-  if (!socialProof && fallbackMarkdown) {
-    const mdMatches = Array.from(fallbackMarkdown.matchAll(SOCIAL_PROOF_REGEX));
-    if (mdMatches.length > 0) {
-      const candidates = mdMatches.map((m) => m[0].trim()).filter((s) => s.length > 3 && s.length < 50);
-      if (candidates.length > 0) {
-        socialProof = candidates[0];
-      }
-    }
+  if (!meta.socialProof && fallbackMarkdown) {
+    meta.socialProof = firstSocialProof(fallbackMarkdown);
   }
 
-  return {
-    ogTitle,
-    ogDescription,
-    themeColor,
-    socialProof,
-    faviconUrl,
-  };
+  return meta;
+}
+
+function firstSocialProof(source: string): string | undefined {
+  // Reset lastIndex: the regex is module-level and /g is stateful.
+  SOCIAL_PROOF_REGEX.lastIndex = 0;
+  for (const match of source.matchAll(SOCIAL_PROOF_REGEX)) {
+    const candidate = clean(match[0], MAX_SOCIAL_PROOF_CHARS);
+    if (candidate && candidate.length > 3) return candidate;
+  }
+  return undefined;
 }

@@ -8,6 +8,7 @@ export default function SignInScreen() {
   const [loadingGoogle, setLoadingGoogle] = useState(false);
   const [loadingGuest, setLoadingGuest] = useState(false);
   const [googleConfigured, setGoogleConfigured] = useState<boolean | null>(null);
+  const [guestEnabled, setGuestEnabled] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -18,9 +19,13 @@ export default function SignInScreen() {
         if (typeof data.googleConfigured === 'boolean') {
           setGoogleConfigured(data.googleConfigured);
         }
+        // The guest provider is disabled by default and never runs in
+        // production, so the button only appears when the server offers it.
+        setGuestEnabled(data.guestEnabled === true);
       })
       .catch(() => {
         setGoogleConfigured(false);
+        setGuestEnabled(false);
       });
   }, []);
 
@@ -45,7 +50,6 @@ export default function SignInScreen() {
       setShowConfigModal(false);
       await signIn('demo-guest', {
         name: 'Creator Guest',
-        email: 'guest@reelforge.ai',
         callbackUrl: '/',
       });
     } catch (err) {
@@ -117,29 +121,34 @@ export default function SignInScreen() {
           </div>
 
           <div className="space-y-3">
-            {/* 1-Click Instant Guest */}
-            <button
-              type="button"
-              onClick={handleGuestSignIn}
-              disabled={loadingGoogle || loadingGuest}
-              className="press w-full rounded-xl bg-[var(--ink)] text-[var(--paper)] py-3 px-4 text-[14px] font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
-            >
-              {loadingGuest ? (
-                <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <>
-                  <span>Explore as Demo Creator</span>
-                  <ArrowRight className="h-4 w-4" />
-                </>
-              )}
-            </button>
+            {/* 1-Click Instant Guest. Server-gated: the provider is off by
+                default and refuses to run in production. */}
+            {guestEnabled && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleGuestSignIn}
+                  disabled={loadingGoogle || loadingGuest}
+                  className="press w-full rounded-xl bg-[var(--ink)] text-[var(--paper)] py-3 px-4 text-[14px] font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  {loadingGuest ? (
+                    <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <span>Explore as Demo Creator</span>
+                      <ArrowRight className="h-4 w-4" />
+                    </>
+                  )}
+                </button>
 
-            <div className="relative flex items-center justify-center py-1">
-              <div className="border-t border-[var(--rule)] w-full" />
-              <span className="bg-[var(--paper)] px-3 text-[11px] uppercase tracking-wider text-[var(--ink-soft)]">
-                or
-              </span>
-            </div>
+                <div className="relative flex items-center justify-center py-1">
+                  <div className="border-t border-[var(--rule)] w-full" />
+                  <span className="bg-[var(--paper)] px-3 text-[11px] uppercase tracking-wider text-[var(--ink-soft)]">
+                    or
+                  </span>
+                </div>
+              </>
+            )}
 
             {/* Google OAuth Button */}
             <button
@@ -236,13 +245,15 @@ GOOGLE_CLIENT_SECRET="your-client-secret"`}
                 <ExternalLink className="h-3 w-3" />
               </a>
 
-              <button
-                type="button"
-                onClick={handleGuestSignIn}
-                className="press font-medium underline underline-offset-2"
-              >
-                Continue as Demo Creator →
-              </button>
+              {guestEnabled && (
+                <button
+                  type="button"
+                  onClick={handleGuestSignIn}
+                  className="press font-medium underline underline-offset-2"
+                >
+                  Continue as Demo Creator →
+                </button>
+              )}
             </div>
           </div>
         </div>

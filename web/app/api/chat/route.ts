@@ -5,99 +5,187 @@ import { extractPageMetadata } from '@/lib/metadata-extractor';
 import { generateVideoBlueprint, generateConversationalReply } from '@/lib/gemini';
 import { fetchReactionGif } from '@/lib/gif-fetcher';
 import { MemeMood } from '@/lib/assets';
-import { renderUgcVideo } from '@/lib/video-compositor';
-import { auth } from '@/auth';
+import { renderUgcVideo, describeValidation } from '@/lib/video-compositor';
+import { currentUserId } from '@/auth';
 import { saveUserVideo } from '@/lib/user-videos';
 import { SavedVideo } from '@/types/chat';
+import { AppError, reportError } from '@/lib/errors';
+import { createLogger, newRequestId } from '@/lib/logger';
+import { clientIp, enforce, LIMITS } from '@/lib/rate-limit';
+import { env } from '@/lib/env';
+import { sanitizePlainText } from '@/lib/validators';
 
 export const maxDuration = 60;
 
-export async function POST(req: NextRequest) {
-  let session = null;
-  try {
-    session = await auth();
-  } catch {
-    // Session optional for public chat
+const log = createLogger('api:chat');
+
+interface HistoryTurn {
+  sender: 'user' | 'assistant';
+  text: string;
+}
+
+interface ChatRequestBody {
+  message?: unknown;
+  history?: unknown;
+}
+
+/** One-shot SSE error response for failures before the stream opens. */
+function errorResponse(err: unknown, requestId: string, context: Record<string, unknown> = {}) {
+  const clientError = reportError(err, log, requestId, context);
+  const payload = {
+    type: 'error',
+    code: clientError.code,
+    message: clientError.message,
+    error: clientError.message,
+    requestId: clientError.requestId,
+    retryable: clientError.retryable,
+  };
+  return new Response(`data: ${JSON.stringify(payload)}\n\n`, {
+    status: err instanceof AppError ? err.status : 500,
+    headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'X-Request-Id': requestId },
+  });
+}
+
+/** Validate and bound the request body before any work is done on it. */
+function parseBody(body: ChatRequestBody): { message: string; history: HistoryTurn[] } {
+  if (typeof body.message !== 'string') {
+    throw new AppError('INVALID_REQUEST', 'message must be a string');
   }
-  const userId = session?.user?.id || session?.user?.email;
 
-  let body;
-  try {
-    body = await req.json();
-  } catch {
-    return new Response(
-      `data: ${JSON.stringify({ type: 'error', message: 'Invalid JSON request payload.' })}\n\n`,
-      {
-        headers: { 'Content-Type': 'text/event-stream; charset=utf-8' },
-        status: 400,
-      }
-    );
-  }
-
-  const message: string = (body.message || '').trim();
-
+  const message = body.message.trim();
   if (!message) {
-    return new Response(
-      `data: ${JSON.stringify({ type: 'error', message: 'Please provide a message or a product URL to get started.' })}\n\n`,
-      {
-        headers: { 'Content-Type': 'text/event-stream; charset=utf-8' },
-        status: 400,
-      }
+    throw new AppError('INVALID_REQUEST', 'message was empty');
+  }
+  if (message.length > env.limits.maxMessageChars) {
+    throw new AppError(
+      'INVALID_REQUEST',
+      `message of ${message.length} chars exceeds the ${env.limits.maxMessageChars} cap`
     );
   }
 
-  // 1. Detect if the message contains a URL
+  const history: HistoryTurn[] = [];
+  if (Array.isArray(body.history)) {
+    for (const turn of body.history.slice(-env.limits.maxHistoryTurns)) {
+      if (!turn || typeof turn !== 'object') continue;
+      const { sender, text } = turn as Partial<HistoryTurn>;
+      if (sender !== 'user' && sender !== 'assistant') continue;
+      const clean = sanitizePlainText(text, env.limits.maxMessageChars);
+      if (clean) history.push({ sender, text: clean });
+    }
+  }
+
+  return { message, history };
+}
+
+export async function POST(req: NextRequest) {
+  const requestId = newRequestId();
+  const reqLog = log.child('request', { requestId });
+
+  const userId = await currentUserId();
+  const identity = userId ?? `ip:${clientIp(req)}`;
+
+  let message: string;
+  let history: HistoryTurn[];
+
+  try {
+    const budget = userId ? LIMITS.chat : LIMITS.anonymousChat;
+    enforce(`chat:${identity}`, budget.limit, budget.windowMs);
+
+    let raw: ChatRequestBody;
+    try {
+      raw = (await req.json()) as ChatRequestBody;
+    } catch {
+      throw new AppError('INVALID_REQUEST', 'request body was not valid json');
+    }
+
+    ({ message, history } = parseBody(raw));
+  } catch (err) {
+    return errorResponse(err, requestId, { identity });
+  }
+
+  // Does this turn ask for a video, or is it conversation?
   let detectedUrl = extractUrl(message);
 
-  // Check if user is answering a previous fallback prompt ("tell me more about the product")
-  const recentHistory = (body.history || []) as Array<{ sender: 'user' | 'assistant'; text: string }>;
-  const lastAssistantMsg = recentHistory.filter((m) => m.sender === 'assistant').pop()?.text || '';
+  const lastAssistantMsg = history.filter((m) => m.sender === 'assistant').pop()?.text ?? '';
   const isFollowupDescription =
     !detectedUrl &&
     (lastAssistantMsg.includes('tell me more about') ||
       lastAssistantMsg.includes('Could you briefly tell me what') ||
-      lastAssistantMsg.includes('limited public content')) &&
+      lastAssistantMsg.includes('did not have enough content')) &&
     message.split(' ').length >= 3;
 
   if (isFollowupDescription) {
-    // Look back for the previous URL mentioned in conversation
-    const previousUrl = recentHistory
-      .map((m) => extractUrl(m.text))
-      .filter(Boolean)
-      .pop();
-    detectedUrl = previousUrl || 'https://custom-product.app';
+    detectedUrl = history.map((m) => extractUrl(m.text)).filter(Boolean).pop() ?? null;
   }
+
+  const wantsVideo = Boolean(detectedUrl);
+
+  // Rendering costs an LLM call and a CPU-bound encode. It is not available
+  // anonymously, and it is separately budgeted from chat.
+  if (wantsVideo) {
+    try {
+      if (!userId) {
+        throw new AppError('UNAUTHORIZED', 'anonymous request attempted a render');
+      }
+      enforce(`render:${userId}`, LIMITS.render.limit, LIMITS.render.windowMs);
+    } catch (err) {
+      return errorResponse(err, requestId, { identity, detectedUrl });
+    }
+  }
+
+  const abortController = new AbortController();
 
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
+      let closed = false;
+
       const sendEvent = (data: Record<string, unknown>) => {
+        if (closed) return;
         try {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
         } catch (err) {
-          console.warn('[Pipeline Stream] Enqueue failed:', err);
+          reqLog.warn('could not enqueue an event', { err: err as Error });
         }
       };
 
-      try {
-        // Conversational flow for questions, greetings, or non-product chats
-        if (!detectedUrl) {
-          sendEvent({
-            type: 'chat_thinking',
-            message: 'Formulating response...',
-          });
-          const reply = await generateConversationalReply(message, body.history);
-          sendEvent({
-            type: 'chat',
-            reply,
-          });
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        try {
           controller.close();
+        } catch {
+          // already closed by a cancel
+        }
+      };
+
+      const fail = (err: unknown, stepId?: string, extra: Record<string, unknown> = {}) => {
+        const clientError = reportError(err, reqLog, requestId, { detectedUrl, ...extra });
+        sendEvent({
+          type: 'error',
+          stepId,
+          code: clientError.code,
+          message: clientError.message,
+          error: clientError.message,
+          requestId: clientError.requestId,
+          retryable: clientError.retryable,
+          detectedUrl,
+        });
+        close();
+      };
+
+      try {
+        if (!detectedUrl) {
+          sendEvent({ type: 'chat_thinking', message: 'Formulating response...' });
+          const reply = await generateConversationalReply(message, history);
+          sendEvent({ type: 'chat', reply });
+          close();
           return;
         }
 
-        console.log(`[Pipeline] Detected URL for video generation: ${detectedUrl}`);
+        reqLog.info('starting pipeline', { detectedUrl, userId });
 
-        // Step 1: Ingesting URL & extracting real metadata
+        // --- Step 1: ingest ------------------------------------------------
         sendEvent({
           type: 'step',
           stepId: 'reading_url',
@@ -116,7 +204,7 @@ export async function POST(req: NextRequest) {
         if (isFollowupDescription) {
           markdown = `# User Provided Description for ${detectedUrl}\n\n${message}`;
           metadata = {
-            ogTitle: detectedUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, ''),
+            ogTitle: new URL(detectedUrl).hostname,
             ogDescription: message,
             themeColor: '#FF6B00',
             socialProof: '',
@@ -133,84 +221,65 @@ export async function POST(req: NextRequest) {
             },
           });
         } else {
-          // Parallel fetch: Jina scrape + Direct HTML metadata extraction
           try {
             const [scrapedMd, extractedMeta] = await Promise.all([
               scrapeWebsiteMarkdown(detectedUrl).catch((err) => {
-                console.warn('[Pipeline] Jina scrape warning:', err.message);
+                // A policy refusal must not be softened into an empty scrape.
+                if (err instanceof AppError && err.code === 'URL_NOT_ALLOWED') throw err;
+                reqLog.debug('jina scrape failed', { err: err as Error });
                 return '';
               }),
-              extractPageMetadata(detectedUrl).catch(() => null),
+              extractPageMetadata(detectedUrl).catch((err) => {
+                if (err instanceof AppError && err.code === 'URL_NOT_ALLOWED') throw err;
+                return null;
+              }),
             ]);
 
             markdown = scrapedMd;
             metadata = extractedMeta;
-
-            // Handle edge case: Site completely unreachable / DNS failure
-            if (!markdown && !metadata?.ogTitle) {
-              sendEvent({
-                type: 'error',
-                stepId: 'reading_url',
-                message: `Unable to reach ${detectedUrl}. The server is unreachable or DNS lookup failed. Please verify the URL and try again.`,
-                error: `Network connection to ${detectedUrl} failed.`,
-                detectedUrl,
-                retryable: true,
-              });
-              controller.close();
-              return;
-            }
-
-            // Handle edge case: Site blocks scraping or has minimal content
-            if (markdown.trim().length < 80 && !metadata?.ogDescription) {
-              const gracefulNotice = `I reached ${detectedUrl}, but the page does not say much. Tell me what the product does in one sentence and I will cut the reel.`;
-              sendEvent({
-                type: 'chat',
-                reply: gracefulNotice,
-                detectedUrl,
-              });
-              controller.close();
-              return;
-            }
-
-            // Complete step 1
-            const metaHighlights = [
-              metadata?.ogTitle ? `"${metadata.ogTitle}"` : '',
-              metadata?.themeColor ? `color ${metadata.themeColor}` : '',
-              metadata?.socialProof ? `social proof (${metadata.socialProof})` : '',
-            ]
-              .filter(Boolean)
-              .join(', ');
-
-            sendEvent({
-              type: 'step',
-              stepId: 'reading_url',
-              step: {
-                id: 'reading_url',
-                label: 'Brand & Content Ingested',
-                description: `Extracted ${markdown.length.toLocaleString()} chars${
-                  metaHighlights ? ` with ${metaHighlights}` : ''
-                }.`,
-                status: 'completed',
-                completedAt: Date.now(),
-              },
-            });
-          } catch (scrapeErr: unknown) {
-            const errorMsg =
-              scrapeErr instanceof Error ? scrapeErr.message : 'Website scraping failed';
-            sendEvent({
-              type: 'error',
-              stepId: 'reading_url',
-              message: `Could not load ${detectedUrl}: ${errorMsg}`,
-              error: errorMsg,
-              detectedUrl,
-              retryable: true,
-            });
-            controller.close();
+          } catch (err) {
+            fail(err, 'reading_url');
             return;
           }
+
+          if (!markdown && !metadata?.ogTitle) {
+            fail(new AppError('URL_UNREACHABLE', `nothing retrievable from ${detectedUrl}`), 'reading_url');
+            return;
+          }
+
+          if (markdown.trim().length < 80 && !metadata?.ogDescription) {
+            // Not a failure: ask the user for the missing context instead.
+            sendEvent({
+              type: 'chat',
+              reply: `I reached that page, but it did not have enough content to work from. Tell me what the product does in one sentence and I will cut the reel.`,
+              detectedUrl,
+            });
+            close();
+            return;
+          }
+
+          const highlights = [
+            metadata?.ogTitle ? `"${metadata.ogTitle}"` : '',
+            metadata?.themeColor ? `color ${metadata.themeColor}` : '',
+            metadata?.socialProof ? `social proof (${metadata.socialProof})` : '',
+          ]
+            .filter(Boolean)
+            .join(', ');
+
+          sendEvent({
+            type: 'step',
+            stepId: 'reading_url',
+            step: {
+              id: 'reading_url',
+              label: 'Brand & Content Ingested',
+              description: `Extracted ${markdown.length.toLocaleString()} chars${highlights ? ` with ${highlights}` : ''}.`,
+              status: 'completed',
+              completedAt: Date.now(),
+            },
+          });
         }
 
-        // Step 2: Extracting product context & crafting personalized UGC Blueprint
+        // --- Step 2: blueprint ---------------------------------------------
         sendEvent({
           type: 'step',
           stepId: 'extracting_context',
@@ -225,48 +294,38 @@ export async function POST(req: NextRequest) {
 
         let blueprint;
         try {
-          blueprint = await generateVideoBlueprint(markdown, detectedUrl, metadata || undefined);
-
-          sendEvent({
-            type: 'step',
-            stepId: 'extracting_context',
-            step: {
-              id: 'extracting_context',
-              label: 'Context Analyzed',
-              description: `Identified category: [${blueprint.category?.toUpperCase()}] • Brand tone: ${blueprint.brand_color}`,
-              status: 'completed',
-              completedAt: Date.now(),
-            },
-          });
-
-          sendEvent({
-            type: 'step',
-            stepId: 'generating_blueprint',
-            step: {
-              id: 'generating_blueprint',
-              label: 'Personalized UGC Blueprint Ready',
-              description: `Hook: "${blueprint.hook_text}"`,
-              status: 'completed',
-              completedAt: Date.now(),
-            },
-            blueprint,
-          });
-        } catch (geminiErr: unknown) {
-          const errorMsg =
-            geminiErr instanceof Error ? geminiErr.message : 'Gemini analysis failed';
-          sendEvent({
-            type: 'error',
-            stepId: 'extracting_context',
-            message: `AI blueprint extraction failed: ${errorMsg}`,
-            error: errorMsg,
-            detectedUrl,
-            retryable: true,
-          });
-          controller.close();
+          blueprint = await generateVideoBlueprint(markdown, detectedUrl, metadata ?? undefined);
+        } catch (err) {
+          fail(err, 'extracting_context');
           return;
         }
 
-        // Step 3: Selecting background clip & matching audio tailored to industry
+        sendEvent({
+          type: 'step',
+          stepId: 'extracting_context',
+          step: {
+            id: 'extracting_context',
+            label: 'Context Analyzed',
+            description: `Identified category: [${blueprint.category?.toUpperCase()}] • Brand tone: ${blueprint.brand_color}`,
+            status: 'completed',
+            completedAt: Date.now(),
+          },
+        });
+
+        sendEvent({
+          type: 'step',
+          stepId: 'generating_blueprint',
+          step: {
+            id: 'generating_blueprint',
+            label: 'Personalized UGC Blueprint Ready',
+            description: `Hook: "${blueprint.hook_text}"`,
+            status: 'completed',
+            completedAt: Date.now(),
+          },
+          blueprint,
+        });
+
+        // --- Step 3: media --------------------------------------------------
         sendEvent({
           type: 'step',
           stepId: 'matching_media',
@@ -279,47 +338,37 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        let gifPath = '';
+        let gifPath: string;
         try {
           gifPath = await fetchReactionGif(
             blueprint.gif_search_term,
             blueprint.mood as MemeMood | undefined
           );
-
-          sendEvent({
-            type: 'step',
-            stepId: 'matching_media',
-            step: {
-              id: 'matching_media',
-              label: 'Media Assets Tailored',
-              description: `Synced meme reaction ("${blueprint.gif_search_term}") with ${blueprint.category} soundtrack.`,
-              status: 'completed',
-              completedAt: Date.now(),
-            },
-          });
-        } catch (mediaErr: unknown) {
-          const errorMsg =
-            mediaErr instanceof Error ? mediaErr.message : 'Media asset selection failed';
-          sendEvent({
-            type: 'error',
-            stepId: 'matching_media',
-            message: `Asset curation failed: ${errorMsg}`,
-            error: errorMsg,
-            detectedUrl,
-            retryable: true,
-          });
-          controller.close();
+        } catch (err) {
+          fail(err, 'matching_media');
           return;
         }
 
-        // Step 4: Compositing video with FFmpeg
+        sendEvent({
+          type: 'step',
+          stepId: 'matching_media',
+          step: {
+            id: 'matching_media',
+            label: 'Media Assets Tailored',
+            description: `Synced meme reaction ("${blueprint.gif_search_term}") with ${blueprint.category} soundtrack.`,
+            status: 'completed',
+            completedAt: Date.now(),
+          },
+        });
+
+        // --- Step 4+5: render and verify -------------------------------------
         sendEvent({
           type: 'step',
           stepId: 'compositing_video',
           step: {
             id: 'compositing_video',
             label: 'Compositing 9:16 UGC Video',
-            description: `Rendering 1080x1920 MP4 with brand styling (${blueprint.brand_color}) & kinetic typography...`,
+            description: `Rendering 720x1280 MP4 with brand styling (${blueprint.brand_color}) & kinetic typography...`,
             status: 'active',
             startedAt: Date.now(),
           },
@@ -333,6 +382,7 @@ export async function POST(req: NextRequest) {
             hookText: blueprint.hook_text,
             durationSeconds: 7,
             brandColor: blueprint.brand_color,
+            signal: abortController.signal,
           });
 
           sendEvent({
@@ -347,78 +397,66 @@ export async function POST(req: NextRequest) {
             },
           });
 
-          // Step 5: Automated ffprobe Quality & Duration Verification
+          // Report what was measured, not what we hoped. When ffprobe is absent
+          // this says so rather than printing a checkmark.
           sendEvent({
             type: 'step',
             stepId: 'validating_video',
             step: {
               id: 'validating_video',
-              label: 'Automated ffprobe Quality Verification',
-              description: `Validated: ${renderResult.duration}s duration, 720x1280 9:16 vertical, 30fps, audio synchronized ✓`,
-              status: 'completed',
+              label: renderResult.validation.verified
+                ? 'Automated ffprobe Quality Verification'
+                : 'Quality Verification Skipped',
+              description: describeValidation(renderResult.validation),
+              status: renderResult.validation.verified ? 'completed' : 'pending',
               completedAt: Date.now(),
             },
           });
 
-          const videoUrl = renderResult.publicUrl;
-
-          // Save video to user's history if authenticated
           if (userId) {
             try {
               const savedVideo: SavedVideo = {
-                id: `vid_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                id: `vid_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
                 userId,
-                userEmail: session?.user?.email || 'user@reelforge.ai',
-                userName: session?.user?.name || undefined,
-                videoUrl,
+                userEmail: '',
+                videoUrl: renderResult.publicUrl,
                 detectedUrl,
                 hookText: blueprint.hook_text,
                 blueprint,
                 createdAt: new Date().toISOString(),
                 rationale: blueprint.rationale,
               };
-              saveUserVideo(savedVideo);
-            } catch (saveErr) {
-              console.warn('[Pipeline] Could not auto-save video to history:', saveErr);
+              await saveUserVideo(savedVideo);
+            } catch (err) {
+              // History is a convenience; never fail a finished render over it.
+              reqLog.warn('could not save video to history', { err: err as Error });
             }
           }
 
-          // Reply with transparent rationale sentence and extracted brand attributes
-          const reply = `Reel is ready for ${detectedUrl}. ${blueprint.hook_text}`;
-
           sendEvent({
             type: 'complete',
-            reply,
+            reply: `Reel is ready for ${detectedUrl}. ${blueprint.hook_text}`,
             detectedUrl,
             blueprint,
-            videoUrl,
+            videoUrl: renderResult.publicUrl,
             rationale: blueprint.rationale,
           });
-        } catch (videoErr: unknown) {
-          const errorMsg =
-            videoErr instanceof Error ? videoErr.message : 'FFmpeg rendering failed';
-          sendEvent({
-            type: 'error',
-            stepId: 'compositing_video',
-            message: `Video compositing failed: ${errorMsg}`,
-            error: errorMsg,
-            detectedUrl,
-            blueprint,
-            retryable: true,
-          });
+          close();
+        } catch (err) {
+          fail(err, 'compositing_video', { blueprint: blueprint.category });
         }
-
-        controller.close();
-      } catch (err: unknown) {
-        const errorMsg = err instanceof Error ? err.message : 'Unexpected pipeline failure';
-        sendEvent({
-          type: 'error',
-          message: errorMsg,
-          error: errorMsg,
-          retryable: true,
-        });
-        controller.close();
+      } catch (err) {
+        fail(err);
       }
+    },
+
+    /**
+     * The client closed the tab or navigated away. Without this the encode kept
+     * running to completion with nobody to receive it.
+     */
+    cancel(reason) {
+      reqLog.info('client disconnected, aborting pipeline', { reason: String(reason ?? '') });
+      abortController.abort();
     },
   });
 
@@ -426,7 +464,8 @@ export async function POST(req: NextRequest) {
     headers: {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',
-      'Connection': 'keep-alive',
+      Connection: 'keep-alive',
+      'X-Request-Id': requestId,
     },
   });
 }
